@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>خدمة الطاولة</title>
-    <script src="https://cloudflare.com"></script>
+    <!-- استدعاء المكتبة محلياً من نفس المجلد -->
+    <script src="mqtt.min.js"></script>
     <style>
         body { font-family: Tahoma, Arial, sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; }
         .card { background: white; max-width: 400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
@@ -23,7 +24,7 @@
 <body>
 
 <div class="card">
-    <h2 id="table-title">جاري تحديد الطاولة...</h2>
+    <h2 id="table-title">طاولة رقم 1</h2>
     <div id="status" class="status disconnected">جاري الاتصال بالنظام...</div>
 
     <button id="btn1" class="btn-waiter" onclick="sendCall('استدعاء ويتر')" disabled>🔔 استدعاء الويتر</button>
@@ -35,27 +36,23 @@
 
 <script>
     const urlParams = new URLSearchParams(window.location.search);
-    // إذا لم يوجد رقم في الرابط، سيفترض تلقائياً أنها طاولة رقم 1 للتجربة
     const tableNumber = urlParams.get('table') || '1';
     
-    const titleElement = document.getElementById('table-title');
+    document.getElementById('table-title').textContent = `طاولة رقم ${tableNumber}`;
     const statusDiv = document.getElementById('status');
     const buttons = document.querySelectorAll('button');
 
-    titleElement.textContent = `طاولة رقم ${tableNumber}`;
-
-    // استخدام خادم HiveMQ عبر منفذ قياسي لتجنب حظر الشبكات
-    const brokerUrl = 'wss://://hivemq.com';
-    const topic = 'restaurant/my_plus_shop_123/calls';
+    // استخدام خادم يعمل على المنفذ القياسي 443 لتجنب حظر الشبكات في مصر
+    const brokerUrl = 'wss://test.mosquitto.org:8081';
+    const topic = 'restaurant/my_unique_shop_123/calls';
 
     if (typeof mqtt === 'undefined') {
-        statusDiv.textContent = 'خطأ: فشل تحميل مكتبة الاتصال من الإنترنت.';
+        statusDiv.textContent = 'خطأ: تأكد من رفع ملف mqtt.min.js بجانب الصفحة.';
     } else {
         const client = mqtt.connect(brokerUrl, {
             clientId: 'table_' + tableNumber + '_' + Math.random().toString(16).substr(2, 8),
             clean: true,
-            reconnectPeriod: 3000,
-            connectTimeout: 10000
+            reconnectPeriod: 3000
         });
 
         client.on('connect', () => {
@@ -65,7 +62,7 @@
         });
 
         client.on('error', (err) => {
-            statusDiv.textContent = 'تعذر الاتصال بالخادم، جاري إعادة المحاولة...';
+            statusDiv.textContent = 'خطأ في الاتصال بالخادم، جاري المحاولة...';
             statusDiv.className = 'status disconnected';
         });
 
