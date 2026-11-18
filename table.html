@@ -3,97 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>خدمة الطاولة</title>
+    <title>استدعاء الويتر</title>
     <script src="https://unpkg.com"></script>
     <style>
-        body { font-family: Tahoma, Arial, sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; }
-        .card { background: white; max-width: 400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h2 { color: #333; margin-bottom: 5px; }
-        .status { font-size: 14px; margin-bottom: 20px; padding: 8px; border-radius: 5px; }
-        .connected { background-color: #d4edda; color: #155724; }
-        .disconnected { background-color: #f8d7da; color: #721c24; }
+        body { font-family: Tahoma, Arial, sans-serif; text-align: center; background: #f4f6f9; padding: 20px; }
+        .card { background: white; max-width: 400px; margin: 40px auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin-bottom: 5px; }
+        .table-num { font-size: 24px; color: #007bff; font-weight: bold; margin-bottom: 25px; }
         button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border: none; border-radius: 10px; cursor: pointer; color: white; transition: 0.3s; }
-        .btn-waiter { background-color: #007bff; }
-        .btn-bill { background-color: #28a745; }
-        .btn-water { background-color: #17a2b8; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #msg { margin-top: 15px; font-weight: bold; color: #007bff; }
+        .btn-call { background: #28a745; }
+        .btn-bill { background: #17a2b8; }
+        .btn-water { background: #6c757d; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #status { margin-top: 20px; font-weight: bold; color: #555; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2 id="table-title">جاري تحديد الطاولة...</h2>
-    <div id="status" class="status disconnected">جاري الاتصال بالنظام...</div>
+    <h1>أهلاً بك</h1>
+    <div class="table-num">طاولة رقم: <span id="tableDisplay">--</span></div>
 
-    <button id="btn1" class="btn-waiter" onclick="sendCall('استدعاء ويتر')" disabled>🔔 استدعاء الويتر</button>
-    <button id="btn2" class="btn-bill" onclick="sendCall('طلب الحساب')" disabled>💳 طلب الحساب</button>
-    <button id="btn3" class="btn-water" onclick="sendCall('طلب مياه')" disabled>💧 طلب مياه</button>
+    <button class="btn-call" onclick="sendRequest('استدعاء الويتر')">🔔 استدعاء الويتر</button>
+    <button class="btn-bill" onclick="sendRequest('طلب الفاتورة')">🧾 طلب الحساب</button>
+    <button class="btn-water" onclick="sendRequest('طلب مياه')">💧 طلب مياه</button>
 
-    <div id="msg"></div>
+    <div id="status">جاري الاتصال بالنظام...</div>
 </div>
 
 <script>
     // 1. استخراج رقم الطاولة من الرابط (?table=5)
     const urlParams = new URLSearchParams(window.location.search);
-    const tableNumber = urlParams.get('table');
-    const titleElement = document.getElementById('table-title');
+    const tableNumber = urlParams.get('table') || 'غير محدد';
+    document.getElementById('tableDisplay').innerText = tableNumber;
+
+    // 2. إعدادات اتصال MQTT (استخدام وسيط عام مجاني للتجربة)
+    // ملاحظة: في الإنتاج يفضل استخدام وسيط خاص مثل EMQX أو HiveMQ Cloud
+    const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
+    const topic = 'my_restaurant_unique_123/calls'; // غيّر الاسم ليكون فريداً لمطعمك
+
+    const client = mqtt.connect(brokerUrl, {
+        clientId: 'client_' + Math.random().toString(16).substr(2, 8),
+        clean: true,
+        connectTimeout: 4000
+    });
+
     const statusDiv = document.getElementById('status');
     const buttons = document.querySelectorAll('button');
+    buttons.forEach(btn => btn.disabled = true);
 
-    // التحقق من وجود رقم طاولة صحيح في الرابط
-    if (!tableNumber || isNaN(tableNumber)) {
-        titleElement.textContent = '⚠️ رابط غير صالح';
-        statusDiv.textContent = 'يرجى مسح كود QR الموجود على الطاولة بشكل صحيح.';
-    } else {
-        titleElement.textContent = `طاولة رقم ${tableNumber}`;
-        initMQTT();
-    }
+    client.on('connect', () => {
+        statusDiv.innerText = '✅ جاهز لخدمتك';
+        statusDiv.style.color = 'green';
+        buttons.forEach(btn => btn.disabled = false);
+    });
 
-    let client;
-    const topic = 'restaurant/my_unique_shop_123/calls'; // نفس الـ Topic في شاشة الويتر
+    client.on('error', (err) => {
+        statusDiv.innerText = '❌ خطأ في الاتصال، يرجى تحديث الصفحة';
+        statusDiv.style.color = 'red';
+    });
 
-    function initMQTT() {
-        const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
-        client = mqtt.connect(brokerUrl, {
-            clientId: 'table_' + tableNumber + '_' + Math.random().toString(16).substr(2, 8),
-            clean: true,
-            reconnectPeriod: 2000
-        });
-
-        client.on('connect', () => {
-            statusDiv.textContent = 'متصل بالنظام وجاهز';
-            statusDiv.className = 'status connected';
-            buttons.forEach(btn => btn.disabled = false);
-        });
-
-        client.on('offline', () => {
-            statusDiv.textContent = 'انقطع الاتصال، جاري المحاولة...';
-            statusDiv.className = 'status disconnected';
-            buttons.forEach(btn => btn.disabled = true);
-        });
-    }
-
-    function sendCall(requestType) {
-        if (!client || !client.connected) return;
-
-        // تعطيل الأزرار مؤقتاً لمنع الإرسال المتكرر بالخطأ (Spam)
-        buttons.forEach(btn => btn.disabled = true);
+    // 3. دالة إرسال الطلب
+    function sendRequest(actionType) {
+        if (!client.connected) {
+            alert('لا يوجد اتصال بالخادم حالياً');
+            return;
+        }
 
         const payload = JSON.stringify({
             table: tableNumber,
-            request: requestType,
+            action: actionType,
             time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
         });
 
-        client.publish(topic, payload, { qos: 1 }, (err) => {
-            if (!err) {
-                const msgDiv = document.getElementById('msg');
-                msgDiv.textContent = `✅ تم إرسال "${requestType}" للويتر!`;
+        // إرسال الرسالة مع ضمان الوصول مرة واحدة (QoS 1)
+        client.publish(topic, payload, { qos: 1 }, (error) => {
+            if (error) {
+                statusDiv.innerText = '❌ فشل الإرسال، حاول مرة أخرى';
+            } else {
+                statusDiv.innerText = `✔️ تم إرسال (${actionType}) بنجاح!`;
+                statusDiv.style.color = '#007bff';
+                
+                // تعطيل الأزرار 15 ثانية لمنع الإرسال المتكرر بالخطأ
+                buttons.forEach(btn => btn.disabled = true);
                 setTimeout(() => {
-                    msgDiv.textContent = '';
                     buttons.forEach(btn => btn.disabled = false);
-                }, 5000); // إعادة تفعيل الأزرار بعد 5 ثوانٍ
+                    statusDiv.innerText = '✅ جاهز لخدمتك';
+                    statusDiv.style.color = 'green';
+                }, 15000);
             }
         });
     }
