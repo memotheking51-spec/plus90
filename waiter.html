@@ -20,7 +20,7 @@
 
 <div class="header">
     <h2>📋 لوحة طلبات الطاولات</h2>
-    <span id="conn-status" class="badge offline">جاري التحميل...</span>
+    <span id="conn-status" class="badge offline">جاري الاتصال...</span>
 </div>
 
 <div id="calls-container"></div>
@@ -30,11 +30,8 @@
     const container = document.getElementById('calls-container');
     const topic = 'restaurant/my_unique_shop_123/calls';
 
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com';
-    script.onload = startWaiter;
-    script.onerror = () => statusBadge.textContent = 'فشل تحميل المكتبة';
-    document.head.appendChild(script);
+    let ws;
+    let pingInterval;
 
     function playBeep() {
         try {
@@ -48,41 +45,106 @@
         } catch (e) {}
     }
 
-    function startWaiter() {
-        statusBadge.textContent = 'جاري الاتصال بالخادم...';
-        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
-            clientId: 'waiter_' + Math.random().toString(16).substr(2, 6),
-            clean: true,
-            reconnectPeriod: 3000
-        });
-
-        client.on('connect', () => {
-            statusBadge.textContent = 'متصل وجاهز للاستقبال ✅';
-            statusBadge.className = 'badge online';
-            client.subscribe(topic, { qos: 1 });
-        });
-
-        client.on('close', () => {
-            statusBadge.textContent = 'انقطع الاتصال';
-            statusBadge.className = 'badge offline';
-        });
-
-        client.on('message', (receivedTopic, message) => {
-            try {
-                const data = JSON.parse(message.toString());
-                const card = document.createElement('div');
-                card.className = 'call-card';
-                card.innerHTML = `
-                    <h3>طاولة رقم ${data.table}</h3>
-                    <p><strong>الطلب:</strong> ${data.request}</p>
-                    <p><small>الوقت: ${data.time}</small></p>
-                    <button class="done-btn" onclick="this.parentElement.remove()">✔️ تم تلبية الطلب</button>
-                `;
-                container.prepend(card);
-                playBeep();
-            } catch (e) {}
-        });
+    function encodeString(str) {
+        const enc = new TextEncoder().encode(str);
+        const res = new Uint8Array(2 + enc.length);
+        res[0] = (enc.length >> 8) & 0xff;
+        res[1] = enc.length & 0xff;
+        res.set(enc, 2);
+        return res;
     }
+
+    function encodeLength(len) {
+        const bytes = [];
+        do {
+            let digit = len % 128;
+            len = Math.floor(len / 128);
+            if (len > 0) digit |= 0x80;
+            bytes.push(digit);
+        } while (len > 0);
+        return new Uint8Array(bytes);
+    }
+
+    function connectWaiter() {
+        ws = new WebSocket('wss://broker.emqx.io:8084/mqtt', 'mqtt');
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = function() {
+            const clientId = 'wtr_' + Math.floor(Math.random() * 10000);
+            const protocolName = encodeString('MQTT');
+            const clientIdBytes = encodeString(clientId);
+            const varHeader = new Uint8Array([...protocolName, 4, 2, 0, 60]);
+            const remainingLen = encodeLength(varHeader.length + clientIdBytes.length);
+            ws.send(new Uint8Array([0x10, ...remainingLen, ...varHeader, ...clientIdBytes]));
+        };
+
+        ws.onmessage = function(event) {
+            const data = new Uint8Array(event.data);
+            const packetType = data[0] & 0xf0;
+
+            // CONNACK -> إرسال طلب الاشتراك (SUBSCRIBE)
+            if (packetType === 0x20 && data[3] === 0x00) {
+                const topicBytes = encodeString(topic);
+                const payload = new Uint8Array([0x00, 0x01, ...topicBytes, 0x00]); // Packet ID 1, QoS 0
+                const remainingLen = encodeLength(payload.length);
+                ws.send(new Uint8Array([0x82, ...remainingLen, ...payload]));
+
+                statusBadge.textContent = 'متصل وجاهز للاستقبال ✅';
+                statusBadge.className = 'badge online';
+
+                pingInterval = setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(new Uint8Array([0xC0, 0x00]));
+                    }
+                }, 30000);
+            }
+            // PUBLISH -> استقبال رسالة من طاولة
+            else if (packetType === 0x30) {
+                let pos = 1;
+                let mult = 1;
+                let remLen = 0;
+                let byte;
+                do {
+                    byte = data[pos++];
+                    remLen += (byte & 127) * mult;
+                    mult *= 128;
+                } while ((byte & 128) !== 0);
+
+                const topicLen = (data[pos] << 8) | data[pos + 1];
+                pos += 2 + topicLen;
+
+                const messageBytes = data.slice(pos);
+                const messageStr = new TextDecoder().decode(messageBytes);
+
+                try {
+                    const callData = JSON.parse(messageStr);
+                    addCallCard(callData);
+                    playBeep();
+                } catch (e) {}
+            }
+        };
+
+        ws.onclose = function() {
+            clearInterval(pingInterval);
+            statusBadge.textContent = 'انقطع الاتصال، جاري المحاولة...';
+            statusBadge.className = 'badge offline';
+            setTimeout(connectWaiter, 3000);
+        };
+    }
+
+    function addCallCard(data) {
+        const card = document.createElement('div');
+        card.className = 'call-card';
+        card.innerHTML = `
+            <h3>طاولة رقم ${data.table}</h3>
+            <p><strong>الطلب:</strong> ${data.request}</p>
+            <p><small>الوقت: ${data.time}</small></p>
+            <button class="done-btn" onclick="this.parentElement.remove()">✔️ تم تلبية الطلب</button>
+        `;
+        container.prepend(card);
+    }
+
+    connectWaiter();
 </script>
 
 </body>
