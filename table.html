@@ -5,19 +5,76 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PLUSNINET - خدمة الطاولة</title>
     <style>
-        body { font-family: Tahoma, Arial, sans-serif; text-align: center; background-color: #121212; color: white; padding: 20px; }
-        .card { background: #1e1e1e; max-width: 400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #333; }
-        .logo { max-width: 110px; max-height: 110px; margin-bottom: 15px; border-radius: 12px; background: white; padding: 4px; object-fit: contain; }
-        h2 { color: #ffffff; margin-bottom: 5px; margin-top: 0; }
-        .status { font-size: 14px; margin-bottom: 20px; padding: 10px; border-radius: 5px; font-weight: bold; }
+        body { 
+            font-family: Tahoma, Arial, sans-serif; 
+            text-align: center; 
+            background-color: #121212; 
+            color: white; 
+            padding: 15px; 
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        /* تصغير عرض البطاقة وحوافها الداخلية */
+        .card { 
+            background: #1e1e1e; 
+            width: 100%;
+            max-width: 280px; 
+            padding: 18px 16px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
+            border: 1px solid #333; 
+        }
+        /* تصغير حجم اللوجو */
+        .logo { 
+            width: 65px; 
+            height: 65px; 
+            margin-bottom: 10px; 
+            border-radius: 10px; 
+            background: white; 
+            padding: 3px; 
+            object-fit: contain; 
+        }
+        /* تصغير حجم عنوان الطاولة */
+        h2 { 
+            color: #ffffff; 
+            font-size: 18px;
+            margin-bottom: 8px; 
+            margin-top: 0; 
+        }
+        /* تصغير شريط الحالة */
+        .status { 
+            font-size: 12px; 
+            margin-bottom: 14px; 
+            padding: 6px; 
+            border-radius: 6px; 
+            font-weight: bold; 
+        }
         .connected { background-color: rgba(39, 174, 96, 0.2); color: #2ecc71; border: 1px solid #27ae60; }
         .disconnected { background-color: rgba(192, 57, 43, 0.2); color: #e74c3c; border: 1px solid #c0392b; }
-        button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border: none; border-radius: 10px; cursor: pointer; color: white; transition: 0.3s; font-weight: bold; }
+        
+        /* تصغير الأزرار والخط بداخلها */
+        button { 
+            width: 100%; 
+            padding: 10px; 
+            margin: 6px 0; 
+            font-size: 14px; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            color: white; 
+            transition: 0.2s; 
+            font-weight: bold; 
+        }
+        button:active { transform: scale(0.97); }
         .btn-waiter { background-color: #007bff; }
         .btn-bill { background-color: #28a745; }
         .btn-water { background-color: #17a2b8; }
         button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
-        #msg { margin-top: 15px; font-weight: bold; color: #2ecc71; }
+        #msg { margin-top: 10px; font-size: 13px; font-weight: bold; color: #2ecc71; }
     </style>
 </head>
 <body>
