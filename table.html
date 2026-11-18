@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>خدمة الطاولة - تحديث جديد</title>
+    <title>خدمة الطاولة</title>
     <style>
         body { font-family: Tahoma, Arial, sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; }
         .card { background: white; max-width: 400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         h2 { color: #333; margin-bottom: 5px; }
-        .status { font-size: 14px; margin-bottom: 20px; padding: 10px; border-radius: 5px; line-height: 1.5; }
+        .status { font-size: 14px; margin-bottom: 20px; padding: 10px; border-radius: 5px; }
         .connected { background-color: #d4edda; color: #155724; }
         .disconnected { background-color: #f8d7da; color: #721c24; }
         button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border: none; border-radius: 10px; cursor: pointer; color: white; transition: 0.3s; }
@@ -23,7 +23,7 @@
 
 <div class="card">
     <h2 id="table-title">طاولة رقم 1</h2>
-    <div id="status" class="status disconnected">1. جاري تهيئة الاتصال...</div>
+    <div id="status" class="status disconnected">جاري الاتصال المباشر...</div>
 
     <button id="btn1" class="btn-waiter" onclick="sendCall('استدعاء ويتر')" disabled>🔔 استدعاء الويتر</button>
     <button id="btn2" class="btn-bill" onclick="sendCall('طلب الحساب')" disabled>💳 طلب الحساب</button>
@@ -40,78 +40,106 @@
     const statusDiv = document.getElementById('status');
     const buttons = document.querySelectorAll('button');
     const topic = 'restaurant/my_unique_shop_123/calls';
-
-    // تحميل المكتبة مع مهلة زمنية 5 ثوانٍ لكشف الحظر فوراً
-    statusDiv.textContent = '2. جاري تحميل نظام المراسلة...';
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com';
     
-    let loadTimeout = setTimeout(() => {
-        statusDiv.textContent = 'خطأ: شبكة الإنترنت لديك تمنع الوصول لملفات التشغيل (CDN). جرب تغيير الشبكة أو استخدام بيانات الهاتف.';
-    }, 6000);
+    // محرك MQTT مدمج بدون أي مكتبات خارجية
+    let ws;
+    let pingInterval;
 
-    script.onload = function() {
-        clearTimeout(loadTimeout);
-        startMQTT();
-    };
+    function encodeString(str) {
+        const enc = new TextEncoder().encode(str);
+        const res = new Uint8Array(2 + enc.length);
+        res[0] = (enc.length >> 8) & 0xff;
+        res[1] = enc.length & 0xff;
+        res.set(enc, 2);
+        return res;
+    }
 
-    script.onerror = function() {
-        clearTimeout(loadTimeout);
-        statusDiv.textContent = 'خطأ: فشل تحميل ملف التشغيل من الإنترنت.';
-    };
+    function encodeLength(len) {
+        const bytes = [];
+        do {
+            let digit = len % 128;
+            len = Math.floor(len / 128);
+            if (len > 0) digit |= 0x80;
+            bytes.push(digit);
+        } while (len > 0);
+        return new Uint8Array(bytes);
+    }
 
-    document.head.appendChild(script);
+    function connectMQTT() {
+        statusDiv.textContent = 'جاري الاتصال بخادم المطعم...';
+        statusDiv.className = 'status disconnected';
+        buttons.forEach(btn => btn.disabled = true);
 
-    function startMQTT() {
-        statusDiv.textContent = '3. جاري الاتصال بخادم المطعم...';
-        
-        // الاتصال بخادم EMQX السحابي
-        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
-            clientId: 'table_' + tableNumber + '_' + Math.random().toString(16).substr(2, 6),
-            clean: true,
-            connectTimeout: 8000,
-            reconnectPeriod: 3000
-        });
+        // الاتصال بخادم EMQX عبر بروتوكول WebSocket المباشر
+        ws = new WebSocket('wss://broker.emqx.io:8084/mqtt', 'mqtt');
+        ws.binaryType = 'arraybuffer';
 
-        client.on('connect', () => {
-            statusDiv.textContent = 'متصل بالنظام وجاهز ✅';
-            statusDiv.className = 'status connected';
-            buttons.forEach(btn => btn.disabled = false);
-        });
+        ws.onopen = function() {
+            const clientId = 'tbl_' + tableNumber + '_' + Math.floor(Math.random() * 10000);
+            const protocolName = encodeString('MQTT');
+            const clientIdBytes = encodeString(clientId);
+            const varHeader = new Uint8Array([...protocolName, 4, 2, 0, 60]); // v3.1.1, clean session, 60s keepalive
+            const remainingLen = encodeLength(varHeader.length + clientIdBytes.length);
+            const packet = new Uint8Array([0x10, ...remainingLen, ...varHeader, ...clientIdBytes]);
+            ws.send(packet);
+        };
 
-        client.on('error', (err) => {
-            statusDiv.textContent = 'خطأ في الخادم: ' + err.message;
-            statusDiv.className = 'status disconnected';
-        });
+        ws.onmessage = function(event) {
+            const data = new Uint8Array(event.data);
+            // CONNACK (0x20)
+            if (data[0] === 0x20 && data[3] === 0x00) {
+                statusDiv.textContent = 'متصل بالنظام وجاهز ✅';
+                statusDiv.className = 'status connected';
+                buttons.forEach(btn => btn.disabled = false);
 
-        client.on('close', () => {
-            statusDiv.textContent = 'تم قطع الاتصال، جاري المحاولة...';
+                // إرسال نبضة بقاء الاتصال كل 30 ثانية
+                pingInterval = setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(new Uint8Array([0xC0, 0x00]));
+                    }
+                }, 30000);
+            }
+        };
+
+        ws.onerror = function() {
+            statusDiv.textContent = 'تعذر الوصول للخادم، جاري المحاولة...';
+        };
+
+        ws.onclose = function() {
+            clearInterval(pingInterval);
+            statusDiv.textContent = 'انقطع الاتصال، جاري إعادة المحاولة...';
             statusDiv.className = 'status disconnected';
             buttons.forEach(btn => btn.disabled = true);
-        });
-
-        window.sendCall = function(requestType) {
-            if (!client.connected) return;
-            buttons.forEach(btn => btn.disabled = true);
-
-            const payload = JSON.stringify({
-                table: tableNumber,
-                request: requestType,
-                time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
-            });
-
-            client.publish(topic, payload, { qos: 1 }, (err) => {
-                if (!err) {
-                    const msgDiv = document.getElementById('msg');
-                    msgDiv.textContent = `✅ تم إرسال "${requestType}" للويتر!`;
-                    setTimeout(() => {
-                        msgDiv.textContent = '';
-                        buttons.forEach(btn => btn.disabled = false);
-                    }, 4000);
-                }
-            });
+            setTimeout(connectMQTT, 3000);
         };
     }
+
+    window.sendCall = function(requestType) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        buttons.forEach(btn => btn.disabled = true);
+
+        const payloadObj = JSON.stringify({
+            table: tableNumber,
+            request: requestType,
+            time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+        });
+
+        const topicBytes = encodeString(topic);
+        const payloadBytes = new TextEncoder().encode(payloadObj);
+        const remainingLen = encodeLength(topicBytes.length + payloadBytes.length);
+        const packet = new Uint8Array([0x30, ...remainingLen, ...topicBytes, ...payloadBytes]); // QoS 0 Publish
+
+        ws.send(packet);
+
+        const msgDiv = document.getElementById('msg');
+        msgDiv.textContent = `✅ تم إرسال "${requestType}" للويتر!`;
+        setTimeout(() => {
+            msgDiv.textContent = '';
+            buttons.forEach(btn => btn.disabled = false);
+        }, 4000);
+    };
+
+    connectMQTT();
 </script>
 
 </body>
