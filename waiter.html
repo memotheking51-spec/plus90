@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>شاشة استقبال طلبات الويتر</title>
+    <script src="https://unpkg.com"></script>
+    <style>
+        body { font-family: Tahoma, Arial, sans-serif; background-color: #2c3e50; color: white; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #34495e; padding-bottom: 15px; }
+        .badge { padding: 5px 12px; border-radius: 20px; font-size: 14px; }
+        .online { background-color: #27ae60; }
+        .offline { background-color: #c0392b; }
+        #calls-container { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; }
+        .call-card { background-color: #ecf0f1; color: #2c3e50; padding: 20px; border-radius: 10px; border-right: 8px solid #e74c3c; box-shadow: 0 4px 8px rgba(0,0,0,0.2); animation: fadeIn 0.4s; }
+        .call-card h3 { margin: 0 0 10px 0; color: #e74c3c; font-size: 22px; }
+        .call-card p { margin: 5px 0; font-size: 16px; }
+        .done-btn { background-color: #27ae60; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 15px; font-size: 16px; }
+        .done-btn:hover { background-color: #219150; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>📋 لوحة طلبات الطاولات</h2>
+    <span id="conn-status" class="badge offline">غير متصل</span>
+</div>
+
+<div id="calls-container"></div>
+
+<script>
+    const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
+    const topic = 'restaurant/my_unique_shop_123/calls'; // يجب أن يطابق نفس الاسم في صفحة الطاولة
+
+    const client = mqtt.connect(brokerUrl, {
+        clientId: 'waiter_screen_' + Math.random().toString(16).substr(2, 8),
+        clean: true,
+        reconnectPeriod: 2000
+    });
+
+    const statusBadge = document.getElementById('conn-status');
+    const container = document.getElementById('calls-container');
+
+    // دالة لإصدار صوت تنبيه بسيط بدون الحاجة لملفات خارجية
+    function playBeep() {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        osc.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+    }
+
+    client.on('connect', () => {
+        statusBadge.textContent = 'متصل وجاهز للاستقبال';
+        statusBadge.className = 'badge online';
+        client.subscribe(topic, { qos: 1 });
+    });
+
+    client.on('offline', () => {
+        statusBadge.textContent = 'انقطع الاتصال';
+        statusBadge.className = 'badge offline';
+    });
+
+    client.on('message', (receivedTopic, message) => {
+        try {
+            const data = JSON.parse(message.toString());
+            addCallCard(data);
+            playBeep();
+        } catch (e) {
+            console.error('بيانات غير صالحة:', e);
+        }
+    });
+
+    function addCallCard(data) {
+        const card = document.createElement('div');
+        card.className = 'call-card';
+        card.innerHTML = `
+            <h3>طاولة رقم ${data.table}</h3>
+            <p><strong>الطلب:</strong> ${data.request}</p>
+            <p><small>الوقت: ${data.time}</small></p>
+            <button class="done-btn" onclick="this.parentElement.remove()">✔️ تم تلبية الطلب</button>
+        `;
+        container.prepend(card);
+    }
+</script>
+
+</body>
+</html>

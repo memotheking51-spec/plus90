@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>خدمة الطاولة</title>
+    <script src="https://unpkg.com"></script>
+    <style>
+        body { font-family: Tahoma, Arial, sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; }
+        .card { background: white; max-width: 400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { color: #333; margin-bottom: 5px; }
+        .status { font-size: 14px; margin-bottom: 20px; padding: 8px; border-radius: 5px; }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border: none; border-radius: 10px; cursor: pointer; color: white; transition: 0.3s; }
+        .btn-waiter { background-color: #007bff; }
+        .btn-bill { background-color: #28a745; }
+        .btn-water { background-color: #17a2b8; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #msg { margin-top: 15px; font-weight: bold; color: #007bff; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2 id="table-title">جاري تحديد الطاولة...</h2>
+    <div id="status" class="status disconnected">جاري الاتصال بالنظام...</div>
+
+    <button id="btn1" class="btn-waiter" onclick="sendCall('استدعاء ويتر')" disabled>🔔 استدعاء الويتر</button>
+    <button id="btn2" class="btn-bill" onclick="sendCall('طلب الحساب')" disabled>💳 طلب الحساب</button>
+    <button id="btn3" class="btn-water" onclick="sendCall('طلب مياه')" disabled>💧 طلب مياه</button>
+
+    <div id="msg"></div>
+</div>
+
+<script>
+    // 1. استخراج رقم الطاولة من الرابط (?table=5)
+    const urlParams = new URLSearchParams(window.location.search);
+    const tableNumber = urlParams.get('table');
+    const titleElement = document.getElementById('table-title');
+    const statusDiv = document.getElementById('status');
+    const buttons = document.querySelectorAll('button');
+
+    // التحقق من وجود رقم طاولة صحيح في الرابط
+    if (!tableNumber || isNaN(tableNumber)) {
+        titleElement.textContent = '⚠️ رابط غير صالح';
+        statusDiv.textContent = 'يرجى مسح كود QR الموجود على الطاولة بشكل صحيح.';
+    } else {
+        titleElement.textContent = `طاولة رقم ${tableNumber}`;
+        initMQTT();
+    }
+
+    let client;
+    const topic = 'restaurant/my_unique_shop_123/calls'; // نفس الـ Topic في شاشة الويتر
+
+    function initMQTT() {
+        const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
+        client = mqtt.connect(brokerUrl, {
+            clientId: 'table_' + tableNumber + '_' + Math.random().toString(16).substr(2, 8),
+            clean: true,
+            reconnectPeriod: 2000
+        });
+
+        client.on('connect', () => {
+            statusDiv.textContent = 'متصل بالنظام وجاهز';
+            statusDiv.className = 'status connected';
+            buttons.forEach(btn => btn.disabled = false);
+        });
+
+        client.on('offline', () => {
+            statusDiv.textContent = 'انقطع الاتصال، جاري المحاولة...';
+            statusDiv.className = 'status disconnected';
+            buttons.forEach(btn => btn.disabled = true);
+        });
+    }
+
+    function sendCall(requestType) {
+        if (!client || !client.connected) return;
+
+        // تعطيل الأزرار مؤقتاً لمنع الإرسال المتكرر بالخطأ (Spam)
+        buttons.forEach(btn => btn.disabled = true);
+
+        const payload = JSON.stringify({
+            table: tableNumber,
+            request: requestType,
+            time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+        });
+
+        client.publish(topic, payload, { qos: 1 }, (err) => {
+            if (!err) {
+                const msgDiv = document.getElementById('msg');
+                msgDiv.textContent = `✅ تم إرسال "${requestType}" للويتر!`;
+                setTimeout(() => {
+                    msgDiv.textContent = '';
+                    buttons.forEach(btn => btn.disabled = false);
+                }, 5000); // إعادة تفعيل الأزرار بعد 5 ثوانٍ
+            }
+        });
+    }
+</script>
+
+</body>
+</html>
