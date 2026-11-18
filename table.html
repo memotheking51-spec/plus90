@@ -40,7 +40,7 @@
     // 2. إعدادات اتصال MQTT (استخدام وسيط عام مجاني للتجربة)
     // ملاحظة: في الإنتاج يفضل استخدام وسيط خاص مثل EMQX أو HiveMQ Cloud
     const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
-    const topic = 'my_restaurant_unique_123/calls'; // غيّر الاسم ليكون فريداً لمطعمك
+    const topic = 'my_plus_ninety_123/calls'; // غيّر الاسم ليكون فريداً لمطعمك
 
     const client = mqtt.connect(brokerUrl, {
         clientId: 'client_' + Math.random().toString(16).substr(2, 8),
