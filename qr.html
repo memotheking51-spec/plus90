@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>PLUSNINET - طباعة 27 طاولة و 20 روم</title>
+    <!-- تحميل المكتبة مباشرة من GitHub المفتوح لديك -->
+    <script src="https://githack.com"></script>
+    <style>
+        body { font-family: Tahoma, Arial, sans-serif; padding: 20px; background: #121212; color: white; }
+        .controls { background: #1e1e1e; padding: 20px; border-radius: 12px; margin-bottom: 25px; border: 1px solid #333; }
+        .row { margin: 12px 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+        input { padding: 10px; border: 1px solid #444; border-radius: 6px; background: #2c2c2c; color: white; direction: ltr; }
+        button { padding: 10px 22px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; font-weight: bold; }
+        .print-btn { background: #28a745; }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 15px; }
+        .qr-card { 
+            background: white; 
+            color: #121212; 
+            border: 2px solid #000; 
+            padding: 12px 10px; 
+            text-align: center; 
+            border-radius: 12px; 
+            page-break-inside: avoid; 
+        }
+        .qr-card.room-card { border-color: #8e44ad; }
+        .card-logo { width: 42px; height: 42px; object-fit: contain; margin-bottom: 4px; }
+        .qr-box { width: 135px; height: 135px; margin: 8px auto; display: flex; justify-content: center; align-items: center; }
+        
+        @media print { 
+            .controls { display: none; } 
+            body { background: white; padding: 0; } 
+        }
+    </style>
+</head>
+<body>
+
+<div class="controls">
+    <h2 style="margin-top:0;">🖨️ PLUSNINET - مولد أكواد QR (27 طاولة + 20 Room)</h2>
+    <div class="row">
+        <label>رابط صفحة table.html:</label>
+        <input type="text" id="base-url" value="https://github.io" style="width: 380px;">
+    </div>
+    <div class="row">
+        <label>عدد الطاولات:</label>
+        <input type="number" id="table-count" value="27" min="0" max="200" style="width: 70px;">
+        
+        <label>عدد الغرف (Rooms):</label>
+        <input type="number" id="room-count" value="20" min="0" max="200" style="width: 70px;">
+        
+        <button type="button" onclick="generateQRs()">توليد الأكواد (47 كارت)</button>
+        <button type="button" class="print-btn" onclick="window.print()">طباعة / حفظ PDF</button>
+    </div>
+</div>
+
+<div id="qr-grid" class="grid"></div>
+
+<script>
+    function generateQRs() {
+        const baseUrl = document.getElementById('base-url').value.trim();
+        const tables = parseInt(document.getElementById('table-count').value) || 0;
+        const rooms = parseInt(document.getElementById('room-count').value) || 0;
+        const grid = document.getElementById('qr-grid');
+
+        if (typeof QRCode === 'undefined') {
+            alert('يرجى التأكد من الاتصال بالإنترنت وتحديث الصفحة (Refresh).');
+            return;
+        }
+
+        if (!baseUrl) {
+            alert('يرجى وضع الرابط أولاً');
+            return;
+        }
+
+        grid.innerHTML = '';
+
+        // إنشاء 27 طاولة
+        for (let i = 1; i <= tables; i++) {
+            createCard(grid, 'طاولة رقم ' + i, baseUrl + '?table=' + i, false);
+        }
+
+        // إنشاء 20 غرفة
+        for (let r = 1; r <= rooms; r++) {
+            createCard(grid, 'Room ' + r, baseUrl + '?room=' + r, true);
+        }
+    }
+
+    function createCard(container, title, targetUrl, isRoom) {
+        const color = isRoom ? '#4a148c' : '#000000';
+        const card = document.createElement('div');
+        card.className = isRoom ? 'qr-card room-card' : 'qr-card';
+        
+        const boxId = 'qr_' + Math.random().toString(36).substr(2, 9);
+        
+        card.innerHTML = `
+            <img src="logo.png" class="card-logo" onerror="this.style.display='none'">
+            <h3 style="margin:0; font-size:17px; color:${color};">${title}</h3>
+            <div id="${boxId}" class="qr-box"></div>
+            <p style="font-size: 11px; font-weight:bold; margin:0;">امسح الكود لطلب الويتر</p>
+        `;
+        container.appendChild(card);
+
+        new QRCode(document.getElementById(boxId), {
+            text: targetUrl,
+            width: 135,
+            height: 135,
+            colorDark: color,
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    }
+
+    window.onload = generateQRs;
+</script>
+
+</body>
+</html>
