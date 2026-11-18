@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>خدمة الطاولة</title>
+    <title>خدمة الطاولة - تحديث جديد</title>
     <style>
         body { font-family: Tahoma, Arial, sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; }
         .card { background: white; max-width: 400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         h2 { color: #333; margin-bottom: 5px; }
-        .status { font-size: 14px; margin-bottom: 20px; padding: 10px; border-radius: 5px; }
+        .status { font-size: 14px; margin-bottom: 20px; padding: 10px; border-radius: 5px; line-height: 1.5; }
         .connected { background-color: #d4edda; color: #155724; }
         .disconnected { background-color: #f8d7da; color: #721c24; }
         button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border: none; border-radius: 10px; cursor: pointer; color: white; transition: 0.3s; }
@@ -23,7 +23,7 @@
 
 <div class="card">
     <h2 id="table-title">طاولة رقم 1</h2>
-    <div id="status" class="status disconnected">جاري الاتصال بالنظام...</div>
+    <div id="status" class="status disconnected">1. جاري تهيئة الاتصال...</div>
 
     <button id="btn1" class="btn-waiter" onclick="sendCall('استدعاء ويتر')" disabled>🔔 استدعاء الويتر</button>
     <button id="btn2" class="btn-bill" onclick="sendCall('طلب الحساب')" disabled>💳 طلب الحساب</button>
@@ -32,23 +32,7 @@
     <div id="msg"></div>
 </div>
 
-<!-- تحميل مكتبة Paho MQTT من خوادم متعددة لضمان عدم الحظر -->
-<script src="https://cloudflare.com" onerror="loadFallback1()"></script>
 <script>
-    function loadFallback1() {
-        var s = document.createElement('script');
-        s.src = 'https://jsdelivr.net';
-        s.onload = initSystem;
-        s.onerror = loadFallback2;
-        document.head.appendChild(s);
-    }
-    function loadFallback2() {
-        var s = document.createElement('script');
-        s.src = 'https://unpkg.com';
-        s.onload = initSystem;
-        document.head.appendChild(s);
-    }
-
     const urlParams = new URLSearchParams(window.location.search);
     const tableNumber = urlParams.get('table') || '1';
     document.getElementById('table-title').textContent = `طاولة رقم ${tableNumber}`;
@@ -56,69 +40,78 @@
     const statusDiv = document.getElementById('status');
     const buttons = document.querySelectorAll('button');
     const topic = 'restaurant/my_unique_shop_123/calls';
-    let client;
 
-    function initSystem() {
-        if (typeof Paho === 'undefined') {
-            statusDiv.textContent = 'يرجى التأكد من اتصالك بالإنترنت وتحديث الصفحة.';
-            return;
-        }
+    // تحميل المكتبة مع مهلة زمنية 5 ثوانٍ لكشف الحظر فوراً
+    statusDiv.textContent = '2. جاري تحميل نظام المراسلة...';
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com';
+    
+    let loadTimeout = setTimeout(() => {
+        statusDiv.textContent = 'خطأ: شبكة الإنترنت لديك تمنع الوصول لملفات التشغيل (CDN). جرب تغيير الشبكة أو استخدام بيانات الهاتف.';
+    }, 6000);
 
-        const clientId = 'table_' + tableNumber + '_' + Math.random().toString(16).substr(2, 8);
-        // الاتصال بخادم Eclipse عبر المنفذ القياسي 443 لتجنب حظر شركات الاتصالات
-        client = new Paho.MQTT.Client('mqtt.eclipseprojects.io', 443, '/mqtt', clientId);
+    script.onload = function() {
+        clearTimeout(loadTimeout);
+        startMQTT();
+    };
 
-        client.onConnectionLost = function () {
-            statusDiv.textContent = 'انقطع الاتصال، جاري المحاولة...';
+    script.onerror = function() {
+        clearTimeout(loadTimeout);
+        statusDiv.textContent = 'خطأ: فشل تحميل ملف التشغيل من الإنترنت.';
+    };
+
+    document.head.appendChild(script);
+
+    function startMQTT() {
+        statusDiv.textContent = '3. جاري الاتصال بخادم المطعم...';
+        
+        // الاتصال بخادم EMQX السحابي
+        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+            clientId: 'table_' + tableNumber + '_' + Math.random().toString(16).substr(2, 6),
+            clean: true,
+            connectTimeout: 8000,
+            reconnectPeriod: 3000
+        });
+
+        client.on('connect', () => {
+            statusDiv.textContent = 'متصل بالنظام وجاهز ✅';
+            statusDiv.className = 'status connected';
+            buttons.forEach(btn => btn.disabled = false);
+        });
+
+        client.on('error', (err) => {
+            statusDiv.textContent = 'خطأ في الخادم: ' + err.message;
+            statusDiv.className = 'status disconnected';
+        });
+
+        client.on('close', () => {
+            statusDiv.textContent = 'تم قطع الاتصال، جاري المحاولة...';
             statusDiv.className = 'status disconnected';
             buttons.forEach(btn => btn.disabled = true);
-            setTimeout(connectMQTT, 3000);
+        });
+
+        window.sendCall = function(requestType) {
+            if (!client.connected) return;
+            buttons.forEach(btn => btn.disabled = true);
+
+            const payload = JSON.stringify({
+                table: tableNumber,
+                request: requestType,
+                time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+            });
+
+            client.publish(topic, payload, { qos: 1 }, (err) => {
+                if (!err) {
+                    const msgDiv = document.getElementById('msg');
+                    msgDiv.textContent = `✅ تم إرسال "${requestType}" للويتر!`;
+                    setTimeout(() => {
+                        msgDiv.textContent = '';
+                        buttons.forEach(btn => btn.disabled = false);
+                    }, 4000);
+                }
+            });
         };
-
-        connectMQTT();
     }
-
-    function connectMQTT() {
-        client.connect({
-            useSSL: true,
-            onSuccess: function () {
-                statusDiv.textContent = 'متصل بالنظام وجاهز ✅';
-                statusDiv.className = 'status connected';
-                buttons.forEach(btn => btn.disabled = false);
-            },
-            onFailure: function () {
-                statusDiv.textContent = 'تعذر الاتصال بالخادم، جاري إعادة المحاولة...';
-                setTimeout(connectMQTT, 3000);
-            }
-        });
-    }
-
-    window.sendCall = function (requestType) {
-        if (!client || !client.isConnected()) return;
-        buttons.forEach(btn => btn.disabled = true);
-
-        const payload = JSON.stringify({
-            table: tableNumber,
-            request: requestType,
-            time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
-        });
-
-        const message = new Paho.MQTT.Message(payload);
-        message.destinationName = topic;
-        message.qos = 1;
-        client.send(message);
-
-        const msgDiv = document.getElementById('msg');
-        msgDiv.textContent = `✅ تم إرسال "${requestType}" للويتر!`;
-        setTimeout(() => {
-            msgDiv.textContent = '';
-            buttons.forEach(btn => btn.disabled = false);
-        }, 4000);
-    };
-
-    window.onload = function() {
-        if (typeof Paho !== 'undefined') initSystem();
-    };
 </script>
 
 </body>
