@@ -11,35 +11,30 @@
         .online { background-color: #27ae60; }
         .offline { background-color: #c0392b; }
         #calls-container { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; }
-        .call-card { background-color: #ecf0f1; color: #2c3e50; padding: 20px; border-radius: 10px; border-right: 8px solid #e74c3c; box-shadow: 0 4px 8px rgba(0,0,0,0.2); animation: fadeIn 0.4s; }
+        .call-card { background-color: #ecf0f1; color: #2c3e50; padding: 20px; border-radius: 10px; border-right: 8px solid #e74c3c; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
         .call-card h3 { margin: 0 0 10px 0; color: #e74c3c; font-size: 22px; }
-        .call-card p { margin: 5px 0; font-size: 16px; }
         .done-btn { background-color: #27ae60; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 15px; font-size: 16px; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
 <div class="header">
     <h2>📋 لوحة طلبات الطاولات</h2>
-    <span id="conn-status" class="badge offline">جاري الاتصال...</span>
+    <span id="conn-status" class="badge offline">جاري التحميل...</span>
 </div>
 
 <div id="calls-container"></div>
 
-<script src="https://cloudflare.com" onerror="loadFallback1()"></script>
 <script>
-    function loadFallback1() {
-        var s = document.createElement('script');
-        s.src = 'https://jsdelivr.net';
-        s.onload = initWaiter;
-        document.head.appendChild(s);
-    }
-
     const statusBadge = document.getElementById('conn-status');
     const container = document.getElementById('calls-container');
     const topic = 'restaurant/my_unique_shop_123/calls';
-    let client;
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com';
+    script.onload = startWaiter;
+    script.onerror = () => statusBadge.textContent = 'فشل تحميل المكتبة';
+    document.head.appendChild(script);
 
     function playBeep() {
         try {
@@ -53,59 +48,41 @@
         } catch (e) {}
     }
 
-    function initWaiter() {
-        if (typeof Paho === 'undefined') return;
+    function startWaiter() {
+        statusBadge.textContent = 'جاري الاتصال بالخادم...';
+        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+            clientId: 'waiter_' + Math.random().toString(16).substr(2, 6),
+            clean: true,
+            reconnectPeriod: 3000
+        });
 
-        const clientId = 'waiter_' + Math.random().toString(16).substr(2, 8);
-        client = new Paho.MQTT.Client('mqtt.eclipseprojects.io', 443, '/mqtt', clientId);
+        client.on('connect', () => {
+            statusBadge.textContent = 'متصل وجاهز للاستقبال ✅';
+            statusBadge.className = 'badge online';
+            client.subscribe(topic, { qos: 1 });
+        });
 
-        client.onConnectionLost = function () {
-            statusBadge.textContent = 'انقطع الاتصال، جاري المحاولة...';
+        client.on('close', () => {
+            statusBadge.textContent = 'انقطع الاتصال';
             statusBadge.className = 'badge offline';
-            setTimeout(connectWaiter, 3000);
-        };
+        });
 
-        client.onMessageArrived = function (message) {
+        client.on('message', (receivedTopic, message) => {
             try {
-                const data = JSON.parse(message.payloadString);
-                addCallCard(data);
+                const data = JSON.parse(message.toString());
+                const card = document.createElement('div');
+                card.className = 'call-card';
+                card.innerHTML = `
+                    <h3>طاولة رقم ${data.table}</h3>
+                    <p><strong>الطلب:</strong> ${data.request}</p>
+                    <p><small>الوقت: ${data.time}</small></p>
+                    <button class="done-btn" onclick="this.parentElement.remove()">✔️ تم تلبية الطلب</button>
+                `;
+                container.prepend(card);
                 playBeep();
             } catch (e) {}
-        };
-
-        connectWaiter();
-    }
-
-    function connectWaiter() {
-        client.connect({
-            useSSL: true,
-            onSuccess: function () {
-                statusBadge.textContent = 'متصل وجاهز للاستقبال ✅';
-                statusBadge.className = 'badge online';
-                client.subscribe(topic, { qos: 1 });
-            },
-            onFailure: function () {
-                statusBadge.textContent = 'فشل الاتصال، جاري المحاولة...';
-                setTimeout(connectWaiter, 3000);
-            }
         });
     }
-
-    function addCallCard(data) {
-        const card = document.createElement('div');
-        card.className = 'call-card';
-        card.innerHTML = `
-            <h3>طاولة رقم ${data.table}</h3>
-            <p><strong>الطلب:</strong> ${data.request}</p>
-            <p><small>الوقت: ${data.time}</small></p>
-            <button class="done-btn" onclick="this.parentElement.remove()">✔️ تم تلبية الطلب</button>
-        `;
-        container.prepend(card);
-    }
-
-    window.onload = function() {
-        if (typeof Paho !== 'undefined') initWaiter();
-    };
 </script>
 
 </body>
