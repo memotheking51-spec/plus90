@@ -3,27 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>خدمة الطاولة</title>
+    <title>PLUSNINET - خدمة الطاولة</title>
     <style>
-        body { font-family: Tahoma, Arial, sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; }
-        .card { background: white; max-width: 400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h2 { color: #333; margin-bottom: 5px; }
-        .status { font-size: 14px; margin-bottom: 20px; padding: 10px; border-radius: 5px; }
-        .connected { background-color: #d4edda; color: #155724; }
-        .disconnected { background-color: #f8d7da; color: #721c24; }
-        button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border: none; border-radius: 10px; cursor: pointer; color: white; transition: 0.3s; }
+        body { font-family: Tahoma, Arial, sans-serif; text-align: center; background-color: #121212; color: white; padding: 20px; }
+        .card { background: #1e1e1e; max-width: 400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #333; }
+        .logo { max-width: 110px; max-height: 110px; margin-bottom: 15px; border-radius: 12px; background: white; padding: 4px; object-fit: contain; }
+        h2 { color: #ffffff; margin-bottom: 5px; margin-top: 0; }
+        .status { font-size: 14px; margin-bottom: 20px; padding: 10px; border-radius: 5px; font-weight: bold; }
+        .connected { background-color: rgba(39, 174, 96, 0.2); color: #2ecc71; border: 1px solid #27ae60; }
+        .disconnected { background-color: rgba(192, 57, 43, 0.2); color: #e74c3c; border: 1px solid #c0392b; }
+        button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border: none; border-radius: 10px; cursor: pointer; color: white; transition: 0.3s; font-weight: bold; }
         .btn-waiter { background-color: #007bff; }
         .btn-bill { background-color: #28a745; }
         .btn-water { background-color: #17a2b8; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #msg { margin-top: 15px; font-weight: bold; color: #007bff; }
+        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+        #msg { margin-top: 15px; font-weight: bold; color: #2ecc71; }
     </style>
 </head>
 <body>
 
 <div class="card">
+    <img src="logo.png" alt="PLUSNINET" class="logo" onerror="this.style.display='none'">
     <h2 id="table-title">طاولة رقم 1</h2>
-    <div id="status" class="status disconnected">جاري الاتصال المباشر...</div>
+    <div id="status" class="status disconnected">جاري الاتصال...</div>
 
     <button id="btn1" class="btn-waiter" onclick="sendCall('استدعاء ويتر')" disabled>🔔 استدعاء الويتر</button>
     <button id="btn2" class="btn-bill" onclick="sendCall('طلب الحساب')" disabled>💳 طلب الحساب</button>
@@ -39,9 +41,13 @@
 
     const statusDiv = document.getElementById('status');
     const buttons = document.querySelectorAll('button');
-    const topic = 'restaurant/my_unique_shop_123/calls';
+    const topic = 'restaurant/plusninet_shop_99/calls';
     
-    // محرك MQTT مدمج بدون أي مكتبات خارجية
+    const brokers = [
+        'wss://broker.emqx.io:8084/mqtt',
+        'wss://://hivemq.com'
+    ];
+    let brokerIndex = 0;
     let ws;
     let pingInterval;
 
@@ -66,51 +72,45 @@
     }
 
     function connectMQTT() {
-        statusDiv.textContent = 'جاري الاتصال بخادم المطعم...';
+        statusDiv.textContent = 'جاري الاتصال بالنظام...';
         statusDiv.className = 'status disconnected';
         buttons.forEach(btn => btn.disabled = true);
 
-        // الاتصال بخادم EMQX عبر بروتوكول WebSocket المباشر
-        ws = new WebSocket('wss://broker.emqx.io:8084/mqtt', 'mqtt');
+        ws = new WebSocket(brokers[brokerIndex], 'mqtt');
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = function() {
-            const clientId = 'tbl_' + tableNumber + '_' + Math.floor(Math.random() * 10000);
+            const clientId = 'tbl_' + tableNumber + '_' + Math.floor(Math.random() * 100000);
             const protocolName = encodeString('MQTT');
             const clientIdBytes = encodeString(clientId);
-            const varHeader = new Uint8Array([...protocolName, 4, 2, 0, 60]); // v3.1.1, clean session, 60s keepalive
+            const varHeader = new Uint8Array([...protocolName, 4, 2, 0, 60]);
             const remainingLen = encodeLength(varHeader.length + clientIdBytes.length);
-            const packet = new Uint8Array([0x10, ...remainingLen, ...varHeader, ...clientIdBytes]);
-            ws.send(packet);
+            ws.send(new Uint8Array([0x10, ...remainingLen, ...varHeader, ...clientIdBytes]));
         };
 
         ws.onmessage = function(event) {
             const data = new Uint8Array(event.data);
-            // CONNACK (0x20)
             if (data[0] === 0x20 && data[3] === 0x00) {
                 statusDiv.textContent = 'متصل بالنظام وجاهز ✅';
                 statusDiv.className = 'status connected';
                 buttons.forEach(btn => btn.disabled = false);
 
-                // إرسال نبضة بقاء الاتصال كل 30 ثانية
+                clearInterval(pingInterval);
                 pingInterval = setInterval(() => {
                     if (ws.readyState === WebSocket.OPEN) {
                         ws.send(new Uint8Array([0xC0, 0x00]));
                     }
-                }, 30000);
+                }, 25000);
             }
-        };
-
-        ws.onerror = function() {
-            statusDiv.textContent = 'تعذر الوصول للخادم، جاري المحاولة...';
         };
 
         ws.onclose = function() {
             clearInterval(pingInterval);
-            statusDiv.textContent = 'انقطع الاتصال، جاري إعادة المحاولة...';
+            statusDiv.textContent = 'جاري إعادة الاتصال...';
             statusDiv.className = 'status disconnected';
             buttons.forEach(btn => btn.disabled = true);
-            setTimeout(connectMQTT, 3000);
+            brokerIndex = (brokerIndex + 1) % brokers.length;
+            setTimeout(connectMQTT, 2500);
         };
     }
 
@@ -127,9 +127,7 @@
         const topicBytes = encodeString(topic);
         const payloadBytes = new TextEncoder().encode(payloadObj);
         const remainingLen = encodeLength(topicBytes.length + payloadBytes.length);
-        const packet = new Uint8Array([0x30, ...remainingLen, ...topicBytes, ...payloadBytes]); // QoS 0 Publish
-
-        ws.send(packet);
+        ws.send(new Uint8Array([0x30, ...remainingLen, ...topicBytes, ...payloadBytes]));
 
         const msgDiv = document.getElementById('msg');
         msgDiv.textContent = `✅ تم إرسال "${requestType}" للويتر!`;
