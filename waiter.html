@@ -44,6 +44,11 @@
             animation: fadeIn 0.35s ease-out; 
         }
         .call-card h3 { margin: 0 0 8px 0; color: #e74c3c; font-size: 17px; }
+        
+        /* تمييز الغرف باللون البنفسجي */
+        .call-card.is-room { border-right-color: #8e44ad; }
+        .call-card.is-room h3 { color: #8e44ad; }
+
         .call-card p { margin: 4px 0; font-size: 13px; }
         .done-btn { 
             background-color: #27ae60; color: white; border: none; padding: 8px 10px; 
@@ -219,9 +224,12 @@
 
     function addCallCard(data) {
         const card = document.createElement('div');
-        card.className = 'call-card';
+        const isRoom = data.type === 'room';
+        card.className = isRoom ? 'call-card is-room' : 'call-card';
+        
+        const title = data.location || `طاولة رقم ${data.table}`;
         card.innerHTML = `
-            <h3>طاولة رقم ${data.table}</h3>
+            <h3>${isRoom ? '🎮 ' : '🪑 '}${title}</h3>
             <p><strong>الطلب:</strong> ${data.request}</p>
             <p><small>الوقت: ${data.time}</small></p>
             <button class="done-btn" onclick="this.parentElement.remove()">✔️ تم تلبية الطلب</button>
