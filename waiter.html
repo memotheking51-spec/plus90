@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>شاشة استقبال طلبات الويتر</title>
-    <!-- استدعاء المكتبة محلياً من نفس المجلد -->
-    <script src="mqtt.min.js"></script>
     <style>
         body { font-family: Tahoma, Arial, sans-serif; background-color: #2c3e50; color: white; padding: 20px; }
         .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #34495e; padding-bottom: 15px; }
@@ -24,17 +22,24 @@
 
 <div class="header">
     <h2>📋 لوحة طلبات الطاولات</h2>
-    <span id="conn-status" class="badge offline">غير متصل</span>
+    <span id="conn-status" class="badge offline">جاري الاتصال...</span>
 </div>
 
 <div id="calls-container"></div>
 
+<script src="https://cloudflare.com" onerror="loadFallback1()"></script>
 <script>
-    const brokerUrl = 'wss://test.mosquitto.org:8081';
-    const topic = 'restaurant/my_unique_shop_123/calls';
+    function loadFallback1() {
+        var s = document.createElement('script');
+        s.src = 'https://jsdelivr.net';
+        s.onload = initWaiter;
+        document.head.appendChild(s);
+    }
 
     const statusBadge = document.getElementById('conn-status');
     const container = document.getElementById('calls-container');
+    const topic = 'restaurant/my_unique_shop_123/calls';
+    let client;
 
     function playBeep() {
         try {
@@ -48,33 +53,42 @@
         } catch (e) {}
     }
 
-    if (typeof mqtt !== 'undefined') {
-        const client = mqtt.connect(brokerUrl, {
-            clientId: 'waiter_screen_' + Math.random().toString(16).substr(2, 8),
-            clean: true,
-            reconnectPeriod: 3000
-        });
+    function initWaiter() {
+        if (typeof Paho === 'undefined') return;
 
-        client.on('connect', () => {
-            statusBadge.textContent = 'متصل وجاهز للاستقبال ✅';
-            statusBadge.className = 'badge online';
-            client.subscribe(topic, { qos: 1 });
-        });
+        const clientId = 'waiter_' + Math.random().toString(16).substr(2, 8);
+        client = new Paho.MQTT.Client('mqtt.eclipseprojects.io', 443, '/mqtt', clientId);
 
-        client.on('offline', () => {
-            statusBadge.textContent = 'انقطع الاتصال';
+        client.onConnectionLost = function () {
+            statusBadge.textContent = 'انقطع الاتصال، جاري المحاولة...';
             statusBadge.className = 'badge offline';
-        });
+            setTimeout(connectWaiter, 3000);
+        };
 
-        client.on('message', (receivedTopic, message) => {
+        client.onMessageArrived = function (message) {
             try {
-                const data = JSON.parse(message.toString());
+                const data = JSON.parse(message.payloadString);
                 addCallCard(data);
                 playBeep();
             } catch (e) {}
+        };
+
+        connectWaiter();
+    }
+
+    function connectWaiter() {
+        client.connect({
+            useSSL: true,
+            onSuccess: function () {
+                statusBadge.textContent = 'متصل وجاهز للاستقبال ✅';
+                statusBadge.className = 'badge online';
+                client.subscribe(topic, { qos: 1 });
+            },
+            onFailure: function () {
+                statusBadge.textContent = 'فشل الاتصال، جاري المحاولة...';
+                setTimeout(connectWaiter, 3000);
+            }
         });
-    } else {
-        statusBadge.textContent = 'ملف mqtt.min.js مفقود';
     }
 
     function addCallCard(data) {
@@ -88,6 +102,10 @@
         `;
         container.prepend(card);
     }
+
+    window.onload = function() {
+        if (typeof Paho !== 'undefined') initWaiter();
+    };
 </script>
 
 </body>
