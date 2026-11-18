@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>خدمة الطاولة</title>
-    <!-- استدعاء المكتبة محلياً من نفس المجلد -->
-    <script src="mqtt.min.js"></script>
     <style>
         body { font-family: Tahoma, Arial, sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; }
         .card { background: white; max-width: 400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
@@ -34,66 +32,93 @@
     <div id="msg"></div>
 </div>
 
+<!-- تحميل مكتبة Paho MQTT من خوادم متعددة لضمان عدم الحظر -->
+<script src="https://cloudflare.com" onerror="loadFallback1()"></script>
 <script>
+    function loadFallback1() {
+        var s = document.createElement('script');
+        s.src = 'https://jsdelivr.net';
+        s.onload = initSystem;
+        s.onerror = loadFallback2;
+        document.head.appendChild(s);
+    }
+    function loadFallback2() {
+        var s = document.createElement('script');
+        s.src = 'https://unpkg.com';
+        s.onload = initSystem;
+        document.head.appendChild(s);
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const tableNumber = urlParams.get('table') || '1';
-    
     document.getElementById('table-title').textContent = `طاولة رقم ${tableNumber}`;
+
     const statusDiv = document.getElementById('status');
     const buttons = document.querySelectorAll('button');
-
-    // استخدام خادم يعمل على المنفذ القياسي 443 لتجنب حظر الشبكات في مصر
-    const brokerUrl = 'wss://test.mosquitto.org:8081';
     const topic = 'restaurant/my_unique_shop_123/calls';
+    let client;
 
-    if (typeof mqtt === 'undefined') {
-        statusDiv.textContent = 'خطأ: تأكد من رفع ملف mqtt.min.js بجانب الصفحة.';
-    } else {
-        const client = mqtt.connect(brokerUrl, {
-            clientId: 'table_' + tableNumber + '_' + Math.random().toString(16).substr(2, 8),
-            clean: true,
-            reconnectPeriod: 3000
-        });
+    function initSystem() {
+        if (typeof Paho === 'undefined') {
+            statusDiv.textContent = 'يرجى التأكد من اتصالك بالإنترنت وتحديث الصفحة.';
+            return;
+        }
 
-        client.on('connect', () => {
-            statusDiv.textContent = 'متصل بالنظام وجاهز ✅';
-            statusDiv.className = 'status connected';
-            buttons.forEach(btn => btn.disabled = false);
-        });
+        const clientId = 'table_' + tableNumber + '_' + Math.random().toString(16).substr(2, 8);
+        // الاتصال بخادم Eclipse عبر المنفذ القياسي 443 لتجنب حظر شركات الاتصالات
+        client = new Paho.MQTT.Client('mqtt.eclipseprojects.io', 443, '/mqtt', clientId);
 
-        client.on('error', (err) => {
-            statusDiv.textContent = 'خطأ في الاتصال بالخادم، جاري المحاولة...';
-            statusDiv.className = 'status disconnected';
-        });
-
-        client.on('offline', () => {
-            statusDiv.textContent = 'انقطع الاتصال بالإنترنت';
+        client.onConnectionLost = function () {
+            statusDiv.textContent = 'انقطع الاتصال، جاري المحاولة...';
             statusDiv.className = 'status disconnected';
             buttons.forEach(btn => btn.disabled = true);
-        });
-
-        window.sendCall = function(requestType) {
-            if (!client.connected) return;
-            buttons.forEach(btn => btn.disabled = true);
-
-            const payload = JSON.stringify({
-                table: tableNumber,
-                request: requestType,
-                time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
-            });
-
-            client.publish(topic, payload, { qos: 1 }, (err) => {
-                if (!err) {
-                    const msgDiv = document.getElementById('msg');
-                    msgDiv.textContent = `✅ تم إرسال "${requestType}" للويتر!`;
-                    setTimeout(() => {
-                        msgDiv.textContent = '';
-                        buttons.forEach(btn => btn.disabled = false);
-                    }, 4000);
-                }
-            });
+            setTimeout(connectMQTT, 3000);
         };
+
+        connectMQTT();
     }
+
+    function connectMQTT() {
+        client.connect({
+            useSSL: true,
+            onSuccess: function () {
+                statusDiv.textContent = 'متصل بالنظام وجاهز ✅';
+                statusDiv.className = 'status connected';
+                buttons.forEach(btn => btn.disabled = false);
+            },
+            onFailure: function () {
+                statusDiv.textContent = 'تعذر الاتصال بالخادم، جاري إعادة المحاولة...';
+                setTimeout(connectMQTT, 3000);
+            }
+        });
+    }
+
+    window.sendCall = function (requestType) {
+        if (!client || !client.isConnected()) return;
+        buttons.forEach(btn => btn.disabled = true);
+
+        const payload = JSON.stringify({
+            table: tableNumber,
+            request: requestType,
+            time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+        });
+
+        const message = new Paho.MQTT.Message(payload);
+        message.destinationName = topic;
+        message.qos = 1;
+        client.send(message);
+
+        const msgDiv = document.getElementById('msg');
+        msgDiv.textContent = `✅ تم إرسال "${requestType}" للويتر!`;
+        setTimeout(() => {
+            msgDiv.textContent = '';
+            buttons.forEach(btn => btn.disabled = false);
+        }, 4000);
+    };
+
+    window.onload = function() {
+        if (typeof Paho !== 'undefined') initSystem();
+    };
 </script>
 
 </body>
