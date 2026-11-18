@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>مولد QR للطاولات</title>
+    <script src="https://cloudflare.com"></script>
+    <style>
+        body { font-family: Tahoma, Arial, sans-serif; padding: 20px; background: #f9f9f9; }
+        .controls { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input { padding: 10px; width: 300px; margin: 5px; border: 1px solid #ccc; border-radius: 5px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        .print-btn { background: #28a745; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
+        .qr-card { background: white; border: 2px dashed #333; padding: 15px; text-align: center; border-radius: 10px; page-break-inside: avoid; }
+        .qr-code { display: flex; justify-content: center; margin: 15px 0; }
+        @media print {
+            .controls { display: none; }
+            body { background: white; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="controls">
+    <h2>🖨️ مولد أكواد QR لطاولات المطعم</h2>
+    <p>ضع الرابط المباشر لملف <b>table.html</b> بعد رفعه على الاستضافة:</p>
+    <input type="text" id="base-url" placeholder="مثال: https://myrestaurant.com" value="https://example.com">
+    <input type="number" id="table-count" placeholder="عدد الطاولات" value="10" min="1" max="100" style="width: 120px;">
+    <button onclick="generateQRs()">توليد الأكواد</button>
+    <button class="print-btn" onclick="window.print()">طباعة الأكواد</button>
+</div>
+
+<div id="qr-grid" class="grid"></div>
+
+<script>
+    function generateQRs() {
+        const baseUrl = document.getElementById('base-url').value.trim();
+        const count = parseInt(document.getElementById('table-count').value);
+        const grid = document.getElementById('qr-grid');
+        grid.innerHTML = '';
+
+        if (!baseUrl) {
+            alert('يرجى إدخال رابط الصفحة أولاً');
+            return;
+        }
+
+        for (let i = 1; i <= count; i++) {
+            const fullUrl = `${baseUrl}?table=${i}`;
+            
+            const card = document.createElement('div');
+            card.className = 'qr-card';
+            card.innerHTML = `
+                <h3>طاولة رقم ${i}</h3>
+                <div class="qr-code" id="qr-${i}"></div>
+                <p style="font-size: 12px; color: #555;">امسح الكود لطلب الويتر أو الحساب</p>
+            `;
+            grid.appendChild(card);
+
+            new QRCode(document.getElementById(`qr-${i}`), {
+                text: fullUrl,
+                width: 150,
+                height: 150
+            });
+        }
+    }
+</script>
+
+</body>
+</html>
