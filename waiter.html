@@ -55,17 +55,53 @@
 
     let ws;
     let pingInterval;
+    let audioCtx;
 
-   function playBeep() {
-    const audio = new Audio('bell.mp3');
-    audio.play().catch(e => console.log('اضغط في أي مكان بالشاشة لتفعيل الصوت'));
-}
+    async function activateSystem() {
+        document.getElementById('start-overlay').style.display = 'none';
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        playBeep();
+
+        try {
+            if ('wakeLock' in navigator) {
+                await navigator.wakeLock.request('screen');
+            }
+        } catch (err) {}
+    }
+
+    function playBeep() {
+        try {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc1 = audioCtx.createOscillator();
+            const gain1 = audioCtx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(660, audioCtx.currentTime);
+            gain1.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+            osc1.connect(gain1);
+            gain1.connect(audioCtx.destination);
+            osc1.start();
+            osc1.stop(audioCtx.currentTime + 0.5);
+
+            const osc2 = audioCtx.createOscillator();
+            const gain2 = audioCtx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(520, audioCtx.currentTime + 0.3);
+            gain2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.0);
+            osc2.connect(gain2);
+            gain2.connect(audioCtx.destination);
+            osc2.start(audioCtx.currentTime + 0.3);
+            osc2.stop(audioCtx.currentTime + 1.0);
+        } catch (e) {}
+    }
 
     function encodeString(str) {
         const enc = new TextEncoder().encode(str);
         const res = new Uint8Array(2 + enc.length);
-        res[0] = (enc.length >> 8) & 0xff;
-        res[1] = enc.length & 0xff;
+        res = (enc.length >> 8) & 0xff;
+        res = enc.length & 0xff;
         res.set(enc, 2);
         return res;
     }
@@ -80,6 +116,8 @@
         } while (len > 0);
         return new Uint8Array(bytes);
     }
+
+    function connectWaiter() {
 
     function connectWaiter() {
         ws = new WebSocket('wss://broker.emqx.io:8084/mqtt', 'mqtt');
