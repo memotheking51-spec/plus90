@@ -3,85 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>شاشة استقبال طلبات الويتر</title>
+    <title>شاشة استقبال الطلبات - الويتر</title>
     <script src="https://unpkg.com"></script>
     <style>
-        body { font-family: Tahoma, Arial, sans-serif; background-color: #2c3e50; color: white; padding: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #34495e; padding-bottom: 15px; }
-        .badge { padding: 5px 12px; border-radius: 20px; font-size: 14px; }
-        .online { background-color: #27ae60; }
-        .offline { background-color: #c0392b; }
-        #calls-container { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; }
-        .call-card { background-color: #ecf0f1; color: #2c3e50; padding: 20px; border-radius: 10px; border-right: 8px solid #e74c3c; box-shadow: 0 4px 8px rgba(0,0,0,0.2); animation: fadeIn 0.4s; }
-        .call-card h3 { margin: 0 0 10px 0; color: #e74c3c; font-size: 22px; }
-        .call-card p { margin: 5px 0; font-size: 16px; }
-        .done-btn { background-color: #27ae60; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 15px; font-size: 16px; }
-        .done-btn:hover { background-color: #219150; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        body { font-family: Tahoma, Arial, sans-serif; background: #222; color: white; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 15px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-top: 20px; }
+        .alert-card { background: #dc3545; padding: 20px; border-radius: 10px; text-align: center; animation: pulse 1.5s infinite; }
+        .alert-card h2 { margin: 0 0 10px 0; font-size: 28px; }
+        .alert-card p { font-size: 18px; margin: 5px 0; }
+        .done-btn { background: white; color: #333; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; margin-top: 15px; width: 100%; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.85; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h2>📋 لوحة طلبات الطاولات</h2>
-    <span id="conn-status" class="badge offline">غير متصل</span>
+    <h1>📋 طلبات الطاولات المباشرة</h1>
+    <div id="connStatus">🔴 جاري الاتصال...</div>
 </div>
 
-<div id="calls-container"></div>
+<!-- زر لتفعيل الصوت لأن المتصفحات تمنع الصوت التلقائي قبل تفاعل المستخدم -->
+<button onclick="enableAudio()" id="audioBtn" style="padding: 10px; margin-top: 10px; background: #ffc107; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">🔊 اضغط هنا لتفعيل التنبيه الصوتي</button>
+
+<div class="grid" id="ordersContainer"></div>
 
 <script>
     const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
-    const topic = 'restaurant/my_unique_shop_123/calls'; // يجب أن يطابق نفس الاسم في صفحة الطاولة
+    const topic = 'my_restaurant_unique_123/calls'; // يجب أن يطابق نفس الاسم في صفحة العميل
+    let audioEnabled = false;
 
-    const client = mqtt.connect(brokerUrl, {
-        clientId: 'waiter_screen_' + Math.random().toString(16).substr(2, 8),
-        clean: true,
-        reconnectPeriod: 2000
-    });
-
-    const statusBadge = document.getElementById('conn-status');
-    const container = document.getElementById('calls-container');
-
-    // دالة لإصدار صوت تنبيه بسيط بدون الحاجة لملفات خارجية
+    // صوت تنبيه بسيط مدمج (Beep)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     function playBeep() {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, ctx.currentTime);
-        osc.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.3);
+        if (!audioEnabled) return;
+        const oscillator = audioCtx.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+        oscillator.connect(audioCtx.destination);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.3);
     }
 
-    client.on('connect', () => {
-        statusBadge.textContent = 'متصل وجاهز للاستقبال';
-        statusBadge.className = 'badge online';
-        client.subscribe(topic, { qos: 1 });
+    function enableAudio() {
+        audioCtx.resume();
+        audioEnabled = true;
+        document.getElementById('audioBtn').style.display = 'none';
+    }
+
+    const client = mqtt.connect(brokerUrl, {
+        clientId: 'waiter_' + Math.random().toString(16).substr(2, 8),
+        clean: true
     });
 
-    client.on('offline', () => {
-        statusBadge.textContent = 'انقطع الاتصال';
-        statusBadge.className = 'badge offline';
+    client.on('connect', () => {
+        document.getElementById('connStatus').innerText = '🟢 متصل بالنظام';
+        client.subscribe(topic, { qos: 1 });
     });
 
     client.on('message', (receivedTopic, message) => {
         try {
             const data = JSON.parse(message.toString());
-            addCallCard(data);
+            addOrderCard(data);
             playBeep();
         } catch (e) {
-            console.error('بيانات غير صالحة:', e);
+            console.error('خطأ في قراءة الرسالة:', e);
         }
     });
 
-    function addCallCard(data) {
+    function addOrderCard(data) {
+        const container = document.getElementById('ordersContainer');
         const card = document.createElement('div');
-        card.className = 'call-card';
+        card.className = 'alert-card';
         card.innerHTML = `
-            <h3>طاولة رقم ${data.table}</h3>
-            <p><strong>الطلب:</strong> ${data.request}</p>
-            <p><small>الوقت: ${data.time}</small></p>
-            <button class="done-btn" onclick="this.parentElement.remove()">✔️ تم تلبية الطلب</button>
+            <h2>طاولة ${data.table}</h2>
+            <p><strong>${data.action}</strong></p>
+            <p style="font-size: 14px;">الوقت: ${data.time}</p>
+            <button class="done-btn" onclick="this.parentElement.remove()">✔️ تم الاستجابة</button>
         `;
         container.prepend(card);
     }
