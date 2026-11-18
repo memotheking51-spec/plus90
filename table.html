@@ -7,8 +7,7 @@
     <style>
         body { font-family: Tahoma, Arial, sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; }
         .card { background: white; max-width: 400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .logo { max-width: 120px; max-height: 120px; margin-bottom: 15px; border-radius: 10px; object-fit: contain; }
-        h2 { color: #333; margin-bottom: 5px; margin-top: 0; }
+        h2 { color: #333; margin-bottom: 5px; }
         .status { font-size: 14px; margin-bottom: 20px; padding: 10px; border-radius: 5px; }
         .connected { background-color: #d4edda; color: #155724; }
         .disconnected { background-color: #f8d7da; color: #721c24; }
@@ -23,9 +22,6 @@
 <body>
 
 <div class="card">
-    <!-- صورة اللوجو -->
-    <img src="logo.png" alt="لوجو المطعم" class="logo" onerror="this.style.display='none'">
-    
     <h2 id="table-title">طاولة رقم 1</h2>
     <div id="status" class="status disconnected">جاري الاتصال المباشر...</div>
 
@@ -45,14 +41,15 @@
     const buttons = document.querySelectorAll('button');
     const topic = 'restaurant/my_unique_shop_123/calls';
     
+    // محرك MQTT مدمج بدون أي مكتبات خارجية
     let ws;
     let pingInterval;
 
     function encodeString(str) {
         const enc = new TextEncoder().encode(str);
         const res = new Uint8Array(2 + enc.length);
-        res = (enc.length >> 8) & 0xff;
-        res = enc.length & 0xff;
+        res[0] = (enc.length >> 8) & 0xff;
+        res[1] = enc.length & 0xff;
         res.set(enc, 2);
         return res;
     }
@@ -73,6 +70,7 @@
         statusDiv.className = 'status disconnected';
         buttons.forEach(btn => btn.disabled = true);
 
+        // الاتصال بخادم EMQX عبر بروتوكول WebSocket المباشر
         ws = new WebSocket('wss://broker.emqx.io:8084/mqtt', 'mqtt');
         ws.binaryType = 'arraybuffer';
 
@@ -80,18 +78,21 @@
             const clientId = 'tbl_' + tableNumber + '_' + Math.floor(Math.random() * 10000);
             const protocolName = encodeString('MQTT');
             const clientIdBytes = encodeString(clientId);
-            const varHeader = new Uint8Array([...protocolName, 4, 2, 0, 60]);
+            const varHeader = new Uint8Array([...protocolName, 4, 2, 0, 60]); // v3.1.1, clean session, 60s keepalive
             const remainingLen = encodeLength(varHeader.length + clientIdBytes.length);
-            ws.send(new Uint8Array([0x10, ...remainingLen, ...varHeader, ...clientIdBytes]));
+            const packet = new Uint8Array([0x10, ...remainingLen, ...varHeader, ...clientIdBytes]);
+            ws.send(packet);
         };
 
         ws.onmessage = function(event) {
             const data = new Uint8Array(event.data);
-            if (data === 0x20 && data === 0x00) {
+            // CONNACK (0x20)
+            if (data[0] === 0x20 && data[3] === 0x00) {
                 statusDiv.textContent = 'متصل بالنظام وجاهز ✅';
                 statusDiv.className = 'status connected';
                 buttons.forEach(btn => btn.disabled = false);
 
+                // إرسال نبضة بقاء الاتصال كل 30 ثانية
                 pingInterval = setInterval(() => {
                     if (ws.readyState === WebSocket.OPEN) {
                         ws.send(new Uint8Array([0xC0, 0x00]));
@@ -126,7 +127,9 @@
         const topicBytes = encodeString(topic);
         const payloadBytes = new TextEncoder().encode(payloadObj);
         const remainingLen = encodeLength(topicBytes.length + payloadBytes.length);
-        ws.send(new Uint8Array([0x30, ...remainingLen, ...topicBytes, ...payloadBytes]));
+        const packet = new Uint8Array([0x30, ...remainingLen, ...topicBytes, ...payloadBytes]); // QoS 0 Publish
+
+        ws.send(packet);
 
         const msgDiv = document.getElementById('msg');
         msgDiv.textContent = `✅ تم إرسال "${requestType}" للويتر!`;
