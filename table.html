@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PLUSNINET - خدمة الطاولة</title>
+    <title>PLUSNINET - خدمة العملاء</title>
     <style>
         body { 
             font-family: Tahoma, Arial, sans-serif; 
@@ -18,7 +18,6 @@
             min-height: 100vh;
             box-sizing: border-box;
         }
-        /* تصغير عرض البطاقة وحوافها الداخلية */
         .card { 
             background: #1e1e1e; 
             width: 100%;
@@ -28,7 +27,6 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
             border: 1px solid #333; 
         }
-        /* تصغير حجم اللوجو */
         .logo { 
             width: 65px; 
             height: 65px; 
@@ -38,14 +36,12 @@
             padding: 3px; 
             object-fit: contain; 
         }
-        /* تصغير حجم عنوان الطاولة */
         h2 { 
             color: #ffffff; 
-            font-size: 18px;
+            font-size: 19px;
             margin-bottom: 8px; 
             margin-top: 0; 
         }
-        /* تصغير شريط الحالة */
         .status { 
             font-size: 12px; 
             margin-bottom: 14px; 
@@ -56,7 +52,6 @@
         .connected { background-color: rgba(39, 174, 96, 0.2); color: #2ecc71; border: 1px solid #27ae60; }
         .disconnected { background-color: rgba(192, 57, 43, 0.2); color: #e74c3c; border: 1px solid #c0392b; }
         
-        /* تصغير الأزرار والخط بداخلها */
         button { 
             width: 100%; 
             padding: 10px; 
@@ -81,7 +76,7 @@
 
 <div class="card">
     <img src="logo.png" alt="PLUSNINET" class="logo" onerror="this.style.display='none'">
-    <h2 id="table-title">طاولة رقم 1</h2>
+    <h2 id="location-title">جاري التحديد...</h2>
     <div id="status" class="status disconnected">جاري الاتصال...</div>
 
     <button id="btn1" class="btn-waiter" onclick="sendCall('استدعاء ويتر')" disabled>🔔 استدعاء الويتر</button>
@@ -93,8 +88,21 @@
 
 <script>
     const urlParams = new URLSearchParams(window.location.search);
-    const tableNumber = urlParams.get('table') || '1';
-    document.getElementById('table-title').textContent = `طاولة رقم ${tableNumber}`;
+    const roomParam = urlParams.get('room');
+    const tableParam = urlParams.get('table');
+
+    let locationLabel = 'طاولة رقم 1';
+    let locationType = 'table';
+
+    if (roomParam) {
+        locationLabel = `Room ${roomParam}`;
+        locationType = 'room';
+    } else if (tableParam) {
+        locationLabel = `طاولة رقم ${tableParam}`;
+        locationType = 'table';
+    }
+
+    document.getElementById('location-title').textContent = locationLabel;
 
     const statusDiv = document.getElementById('status');
     const buttons = document.querySelectorAll('button');
@@ -137,7 +145,7 @@
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = function() {
-            const clientId = 'tbl_' + tableNumber + '_' + Math.floor(Math.random() * 100000);
+            const clientId = 'cli_' + Math.floor(Math.random() * 100000);
             const protocolName = encodeString('MQTT');
             const clientIdBytes = encodeString(clientId);
             const varHeader = new Uint8Array([...protocolName, 4, 2, 0, 60]);
@@ -176,7 +184,8 @@
         buttons.forEach(btn => btn.disabled = true);
 
         const payloadObj = JSON.stringify({
-            table: tableNumber,
+            location: locationLabel,
+            type: locationType,
             request: requestType,
             time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
         });
