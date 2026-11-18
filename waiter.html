@@ -11,10 +11,8 @@
             color: white; 
             padding: 15px 25px; 
             margin: 0; 
-            display: block; /* يضمن بقاء الهيدر في الأعلى والبطاقات أسفله */
+            display: block; 
         }
-        
-        /* الشريط العلوي (اللوجو والعنوان وحالة الاتصال) */
         .header { 
             display: flex; 
             justify-content: space-between; 
@@ -24,39 +22,18 @@
             margin-bottom: 20px;
             width: 100%;
         }
-        
-        .header-brand { 
-            display: flex; 
-            align-items: center; 
-            gap: 12px; 
-        }
-        
-        .header-logo { 
-            height: 45px; 
-            width: 45px; 
-            border-radius: 8px; 
-            object-fit: cover; 
-            background: white; 
-            padding: 2px; 
-        }
-        
-        .badge { 
-            padding: 6px 14px; 
-            border-radius: 20px; 
-            font-size: 13px; 
-            font-weight: bold;
-        }
+        .header-brand { display: flex; align-items: center; gap: 12px; }
+        .header-logo { height: 45px; width: 45px; border-radius: 8px; object-fit: cover; background: white; padding: 2px; }
+        .badge { padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; }
         .online { background-color: #27ae60; }
         .offline { background-color: #c0392b; }
         
-        /* شبكة البطاقات (تترتب بجانب بعضها أفقياً) */
         #calls-container { 
             display: grid; 
             grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); 
             gap: 15px; 
             width: 100%;
         }
-        
         .call-card { 
             background-color: #ecf0f1; 
             color: #2c3e50; 
@@ -66,38 +43,19 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.4); 
             animation: fadeIn 0.35s ease-out; 
         }
-        
         .call-card h3 { margin: 0 0 8px 0; color: #e74c3c; font-size: 17px; }
         .call-card p { margin: 4px 0; font-size: 13px; }
-        
         .done-btn { 
-            background-color: #27ae60; 
-            color: white; 
-            border: none; 
-            padding: 8px 10px; 
-            border-radius: 6px; 
-            cursor: pointer; 
-            width: 100%; 
-            margin-top: 12px; 
-            font-size: 13px; 
-            font-weight: bold;
+            background-color: #27ae60; color: white; border: none; padding: 8px 10px; 
+            border-radius: 6px; cursor: pointer; width: 100%; margin-top: 12px; font-size: 13px; font-weight: bold;
         }
-        .done-btn:hover { background-color: #219150; }
-        
-        /* شاشة البداية */
         #start-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(18, 18, 18, 0.97); z-index: 9999;
             display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
         }
-        .overlay-logo { 
-            width: 110px; height: 110px; margin-bottom: 15px; 
-            border-radius: 15px; background: white; padding: 6px; object-fit: cover;
-        }
-        #start-btn {
-            background-color: #27ae60; color: white; border: none; padding: 15px 35px;
-            font-size: 18px; border-radius: 10px; cursor: pointer; font-weight: bold;
-        }
+        .overlay-logo { width: 110px; height: 110px; margin-bottom: 15px; border-radius: 15px; background: white; padding: 6px; object-fit: cover; }
+        #start-btn { background-color: #27ae60; color: white; border: none; padding: 15px 35px; font-size: 18px; border-radius: 10px; cursor: pointer; font-weight: bold; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
@@ -110,7 +68,6 @@
     <button id="start-btn" onclick="activateSystem()">🚀 بدء استقبال الطلبات</button>
 </div>
 
-<!-- الشريط العلوي -->
 <div class="header">
     <div class="header-brand">
         <img src="logo.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
@@ -119,14 +76,18 @@
     <span id="conn-status" class="badge offline">جاري الاتصال...</span>
 </div>
 
-<!-- حاوية الطلبات بجانب بعضها -->
 <div id="calls-container"></div>
 
 <script>
     const statusBadge = document.getElementById('conn-status');
     const container = document.getElementById('calls-container');
-    const topic = 'restaurant/my_unique_shop_123/calls';
+    const topic = 'restaurant/plusninet_shop_99/calls';
 
+    const brokers = [
+        'wss://broker.emqx.io:8084/mqtt',
+        'wss://://hivemq.com'
+    ];
+    let brokerIndex = 0;
     let ws;
     let pingInterval;
     let audioCtx;
@@ -136,11 +97,8 @@
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') await audioCtx.resume();
         playBeep();
-
         try {
-            if ('wakeLock' in navigator) {
-                await navigator.wakeLock.request('screen');
-            }
+            if ('wakeLock' in navigator) await navigator.wakeLock.request('screen');
         } catch (err) {}
     }
 
@@ -174,8 +132,8 @@
     function encodeString(str) {
         const enc = new TextEncoder().encode(str);
         const res = new Uint8Array(2 + enc.length);
-        res = (enc.length >> 8) & 0xff;
-        res = enc.length & 0xff;
+        res[0] = (enc.length >> 8) & 0xff;
+        res[1] = enc.length & 0xff;
         res.set(enc, 2);
         return res;
     }
@@ -192,11 +150,12 @@
     }
 
     function connectWaiter() {
-        ws = new WebSocket('wss://broker.emqx.io:8084/mqtt', 'mqtt');
+        const currentBroker = brokers[brokerIndex];
+        ws = new WebSocket(currentBroker, 'mqtt');
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = function() {
-            const clientId = 'wtr_' + Math.floor(Math.random() * 10000);
+            const clientId = 'wtr_' + Math.floor(Math.random() * 100000);
             const protocolName = encodeString('MQTT');
             const clientIdBytes = encodeString(clientId);
             const varHeader = new Uint8Array([...protocolName, 4, 2, 0, 60]);
@@ -206,9 +165,9 @@
 
         ws.onmessage = function(event) {
             const data = new Uint8Array(event.data);
-            const packetType = data & 0xf0;
+            const packetType = data[0] & 0xf0;
 
-            if (packetType === 0x20 && data === 0x00) {
+            if (packetType === 0x20 && data[3] === 0x00) {
                 const topicBytes = encodeString(topic);
                 const payload = new Uint8Array([0x00, 0x01, ...topicBytes, 0x00]);
                 const remainingLen = encodeLength(payload.length);
@@ -217,11 +176,12 @@
                 statusBadge.textContent = 'متصل وجاهز للاستقبال ✅';
                 statusBadge.className = 'badge online';
 
+                clearInterval(pingInterval);
                 pingInterval = setInterval(() => {
                     if (ws.readyState === WebSocket.OPEN) {
                         ws.send(new Uint8Array([0xC0, 0x00]));
                     }
-                }, 30000);
+                }, 25000);
             }
             else if (packetType === 0x30) {
                 let pos = 1;
@@ -250,9 +210,10 @@
 
         ws.onclose = function() {
             clearInterval(pingInterval);
-            statusBadge.textContent = 'انقطع الاتصال، جاري المحاولة...';
+            statusBadge.textContent = 'جاري إعادة الاتصال...';
             statusBadge.className = 'badge offline';
-            setTimeout(connectWaiter, 3000);
+            brokerIndex = (brokerIndex + 1) % brokers.length;
+            setTimeout(connectWaiter, 2500);
         };
     }
 
