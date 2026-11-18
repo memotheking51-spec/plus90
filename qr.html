@@ -3,8 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>PLUSNINET - طباعة 27 طاولة و 20 روم</title>
-    <!-- تحميل المكتبة مباشرة من GitHub المفتوح لديك -->
-    <script src="https://githack.com"></script>
     <style>
         body { font-family: Tahoma, Arial, sans-serif; padding: 20px; background: #121212; color: white; }
         .controls { background: #1e1e1e; padding: 20px; border-radius: 12px; margin-bottom: 25px; border: 1px solid #333; }
@@ -25,7 +23,7 @@
         }
         .qr-card.room-card { border-color: #8e44ad; }
         .card-logo { width: 42px; height: 42px; object-fit: contain; margin-bottom: 4px; }
-        .qr-box { width: 135px; height: 135px; margin: 8px auto; display: flex; justify-content: center; align-items: center; }
+        canvas { width: 135px; height: 135px; margin: 8px auto; display: block; }
         
         @media print { 
             .controls { display: none; } 
@@ -56,62 +54,230 @@
 <div id="qr-grid" class="grid"></div>
 
 <script>
-    function generateQRs() {
-        const baseUrl = document.getElementById('base-url').value.trim();
-        const tables = parseInt(document.getElementById('table-count').value) || 0;
-        const rooms = parseInt(document.getElementById('room-count').value) || 0;
-        const grid = document.getElementById('qr-grid');
+// محرك رسم QR قياسي مدمج بالكامل بدون أي روابط خارجية
+const MiniQR = (function() {
+    const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+    let x = 1;
+    for (let i = 0; i < 255; i++) {
+        EXP[i] = x;
+        LOG[x] = i;
+        x <<= 1;
+        if (x & 0x100) x ^= 0x11d;
+    }
+    for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
 
-        if (typeof QRCode === 'undefined') {
-            alert('يرجى التأكد من الاتصال بالإنترنت وتحديث الصفحة (Refresh).');
-            return;
+    function polyMul(p1, p2) {
+        const res = new Uint8Array(p1.length + p2.length - 1);
+        for (let i = 0; i < p1.length; i++) {
+            for (let j = 0; j < p2.length; j++) {
+                if (p1[i] !== 0 && p2[j] !== 0) {
+                    res[i + j] ^= EXP[LOG[p1[i]] + LOG[p2[j]]];
+                }
+            }
         }
-
-        if (!baseUrl) {
-            alert('يرجى وضع الرابط أولاً');
-            return;
-        }
-
-        grid.innerHTML = '';
-
-        // إنشاء 27 طاولة
-        for (let i = 1; i <= tables; i++) {
-            createCard(grid, 'طاولة رقم ' + i, baseUrl + '?table=' + i, false);
-        }
-
-        // إنشاء 20 غرفة
-        for (let r = 1; r <= rooms; r++) {
-            createCard(grid, 'Room ' + r, baseUrl + '?room=' + r, true);
-        }
+        return res;
     }
 
-    function createCard(container, title, targetUrl, isRoom) {
-        const color = isRoom ? '#4a148c' : '#000000';
-        const card = document.createElement('div');
-        card.className = isRoom ? 'qr-card room-card' : 'qr-card';
-        
-        const boxId = 'qr_' + Math.random().toString(36).substr(2, 9);
-        
-        card.innerHTML = `
-            <img src="logo.png" class="card-logo" onerror="this.style.display='none'">
-            <h3 style="margin:0; font-size:17px; color:${color};">${title}</h3>
-            <div id="${boxId}" class="qr-box"></div>
-            <p style="font-size: 11px; font-weight:bold; margin:0;">امسح الكود لطلب الويتر</p>
-        `;
-        container.appendChild(card);
-
-        new QRCode(document.getElementById(boxId), {
-            text: targetUrl,
-            width: 135,
-            height: 135,
-            colorDark: color,
-            colorLight: '#ffffff',
-            correctLevel: QRCode.CorrectLevel.M
-        });
+    function getGeneratorPoly(ecCount) {
+        let g = new Uint8Array([1]);
+        for (let i = 0; i < ecCount; i++) {
+            g = polyMul(g, new Uint8Array([1, EXP[i]]));
+        }
+        return g;
     }
 
-    window.onload = generateQRs;
-</script>
+    function computeEC(data, ecCount) {
+        const gen = getGeneratorPoly(ecCount);
+        const msg = new Uint8Array(data.length + ecCount);
+        msg.set(data);
+        for (let i = 0; i < data.length; i++) {
+            const coef = msg[i];
+            if (coef !== 0) {
+                for (let j = 0; j < gen.length; j++) {
+                    msg[i + j] ^= EXP[LOG[gen[j]] + LOG[coef]];
+                }
+            }
+        }
+        return msg.slice(data.length);
+    }
 
-</body>
-</html>
+    // جداول السعة وتصحيح الأخطاء (Level L) للإصدارات من 1 إلى 6
+    const VERSIONS = [
+        null,
+        { size: 21, total: 26, data: 19, ec: 7, blocks: 1, align: [] },
+        { size: 25, total: 44, data: 34, ec: 10, blocks: 1, align: [6, 18] },
+        { size: 29, total: 70, data: 55, ec: 15, blocks: 1, align: [6, 22] },
+        { size: 33, total: 100, data: 80, ec: 20, blocks: 1, align: [6, 26] },
+        { size: 37, total: 134, data: 108, ec: 26, blocks: 1, align: [6, 30] },
+        { size: 41, total: 172, data: 136, ec: 18, blocks: 2, align: [6, 34] }
+    ];
+
+    function makeQR(text) {
+        const raw = new TextEncoder().encode(text);
+        let v = 1;
+        while (v <= 6 && raw.length + 2 > VERSIONS[v].data) v++;
+        const cfg = VERSIONS[v];
+        const size = cfg.size;
+        const grid = Array.from({ length: size }, () => new Int8Array(size)); // 0: فارغ، 1: أسود، -1: أبيض
+
+        function setMod(r, c, dark) {
+            if (r >= 0 && r < size && c >= 0 && c < size) grid[r][c] = dark ? 1 : -1;
+        }
+
+        function drawFinder(r, c) {
+            for (let dr = -1; dr <= 7; dr++) {
+                for (let dc = -1; dc <= 7; dc++) {
+                    const dark = (dr >= 0 && dr <= 6 && (dc === 0 || dc === 6)) ||
+                                 (dc >= 0 && dc <= 6 && (dr === 0 || dr === 6)) ||
+                                 (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4);
+                    setMod(r + dr, c + dc, dark);
+                }
+            }
+        }
+        drawFinder(0, 0);
+        drawFinder(size - 7, 0);
+        drawFinder(0, size - 7);
+
+        if (cfg.align.length > 0) {
+            const p = cfg.align[1];
+            for (let dr = -2; dr <= 2; dr++) {
+                for (let dc = -2; dc <= 2; dc++) {
+                    const dark = Math.abs(dr) === 2 || Math.abs(dc) === 2 || (dr === 0 && dc === 0);
+                    setMod(p + dr, p + dc, dark);
+                }
+            }
+        }
+
+        for (let i = 8; i < size - 8; i++) {
+            if (grid[6][i] === 0) setMod(6, i, i % 2 === 0);
+            if (grid[i][6] === 0) setMod(i, 6, i % 2 === 0);
+        }
+        setMod(size - 8, 8, true);
+
+        // معلومات التنسيق (Level L, Mask 0 -> 0x77c4)
+        const fmt = 0x77c4;
+        for (let i = 0; i < 15; i++) {
+            const bit = ((fmt >> i) & 1) === 1;
+            if (i < 6) setMod(8, i, bit);
+            else if (i < 8) setMod(8, i + 1, bit);
+            else setMod(8, size - 15 + i, bit);
+
+            if (i < 8) setMod(size - 1 - i, 8, bit);
+            else if (i < 9) setMod(15 - i, 8, bit);
+            else setMod(14 - i, 8, bit);
+        }
+
+        // ترميز البيانات (Byte Mode)
+        const bits = [];
+        function addBits(val, len) {
+            for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1);
+        }
+        addBits(4, 4);
+        addBits(raw.length, 8);
+        for (let b of raw) addBits(b, 8);
+        addBits(0, 4);
+        while (bits.length % 8 !== 0) bits.push(0);
+
+        const dataBytes = new Uint8Array(cfg.data);
+        for (let i = 0; i < bits.length / 8; i++) {
+            let b = 0;
+            for (let j = 0; j < 8; j++) b = (b << 1) | bits[i * 8 + j];
+            dataBytes[i] = b;
+        }
+        let pad = true;
+        for (let i = bits.length / 8; i < cfg.data; i++) {
+            dataBytes[i] = pad ? 0xec : 0x11;
+            pad = !pad;
+        }
+
+        const finalStream = [];
+        if (cfg.blocks === 1) {
+            const ec = computeEC(dataBytes, cfg.ec);
+            finalStream.push(...dataBytes, ...ec);
+        } else {
+            const half = cfg.data / 2;
+            const b1 = dataBytes.slice(0, half);
+            const b2 = dataBytes.slice(half);
+            const ec1 = computeEC(b1, cfg.ec);
+            const ec2 = computeEC(b2, cfg.ec);
+            for (let i = 0; i < half; i++) finalStream.push(b1[i], b2[i]);
+            for (let i = 0; i < cfg.ec; i++) finalStream.push(ec1[i], ec2[i]);
+        }
+
+        const bitStream = [];
+        for (let b of finalStream) {
+            for (let i = 7; i >= 0; i--) bitStream.push((b >> i) & 1);
+        }
+
+        let dir = -1, r = size - 1, idx = 0;
+        for (let c = size - 1; c > 0; c -= 2) {
+            if (c === 6) c--;
+            while (true) {
+                for (let dc = 0; dc < 2; dc++) {
+                    const cc = c - dc;
+                    if (grid[r][cc] === 0) {
+                        let bit = idx < bitStream.length ? bitStream[idx++] : 0;
+                        if ((r + cc) % 2 === 0) bit ^= 1; // Mask 0
+                        grid[r][cc] = bit === 1 ? 1 : -1;
+                    }
+                }
+                r += dir;
+                if (r < 0 || r >= size) { r -= dir; dir = -dir; break; }
+            }
+        }
+        return grid;
+    }
+
+    return {
+        draw: function(canvas, text, color) {
+            const grid = makeQR(text);
+            const size = grid.length;
+            const scale = 6;
+            const pad = 12;
+            canvas.width = size * scale + pad * 2;
+            canvas.height = size * scale + pad * 2;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = color;
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    if (grid[r][c] === 1) {
+                        ctx.fillRect(pad + c * scale, pad + r * scale, scale, scale);
+                    }
+                }
+            }
+        }
+    };
+})();
+
+function generateQRs() {
+    const baseUrl = document.getElementById('base-url').value.trim();
+    const tables = parseInt(document.getElementById('table-count').value) || 0;
+    const rooms = parseInt(document.getElementById('room-count').value) || 0;
+    const grid = document.getElementById('qr-grid');
+
+    if (!baseUrl) {
+        alert('يرجى وضع الرابط أولاً');
+        return;
+    }
+
+    grid.innerHTML = '';
+
+    for (let i = 1; i <= tables; i++) {
+Use code with caution.
+createCard(grid, 'طاولة رقم ' + i, baseUrl + '?table=' + i, false);
+}
+for (let r = 1; r <= rooms; r++) {
+createCard(grid, 'Room ' + r, baseUrl + '?room=' + r, true);
+}
+}
+function createCard(container, title, targetUrl, isRoom) {
+const color = isRoom ? '#4a148c' : '#000000';
+const card = document.createElement('div');
+card.className = isRoom ? 'qr-card room-card' : 'qr-card';
+card.innerHTML = <img src="logo.png" class="card-logo" onerror="this.style.display='none'"> <h3 style="margin:0; font-size:17px; color:${color};">${title}</h3> <canvas></canvas> <p style="font-size: 11px; font-weight:bold; margin:0;">امسح الكود لطلب الويتر</p>;
+container.appendChild(card);
+MiniQR.draw(card.querySelector('canvas'), targetUrl, color);
+}
+window.onload = generateQRs;
