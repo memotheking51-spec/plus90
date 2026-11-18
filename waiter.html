@@ -3,67 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>شاشة استقبال طلبات الويتر</title>
+    <title>PLUSNINET - لوحة الطلبات</title>
     <style>
-        body { font-family: Tahoma, Arial, sans-serif; background-color: #121212; color: white; padding: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #34495e; padding-bottom: 15px; }
-        .badge { padding: 5px 12px; border-radius: 20px; font-size: 14px; }
+        body { 
+            font-family: Tahoma, Arial, sans-serif; 
+            background-color: #121212; 
+            color: white; 
+            padding: 15px 25px; 
+            margin: 0; 
+            display: block; /* يضمن بقاء الهيدر في الأعلى والبطاقات أسفله */
+        }
+        
+        /* الشريط العلوي (اللوجو والعنوان وحالة الاتصال) */
+        .header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            border-bottom: 1px solid #333; 
+            padding-bottom: 15px; 
+            margin-bottom: 20px;
+            width: 100%;
+        }
+        
+        .header-brand { 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+        }
+        
+        .header-logo { 
+            height: 45px; 
+            width: 45px; 
+            border-radius: 8px; 
+            object-fit: cover; 
+            background: white; 
+            padding: 2px; 
+        }
+        
+        .badge { 
+            padding: 6px 14px; 
+            border-radius: 20px; 
+            font-size: 13px; 
+            font-weight: bold;
+        }
         .online { background-color: #27ae60; }
         .offline { background-color: #c0392b; }
-#calls-container { 
-    margin-top: 15px; 
-    display: grid; 
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); 
-    gap: 10px; 
-}
-
-/* تصغير المسافات الداخلية للبطاقة */
-.call-card { 
-    background-color: #ecf0f1; 
-    color: #2c3e50; 
-    padding: 12px; 
-    border-radius: 8px; 
-    border-right: 5px solid #e74c3c; 
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2); 
-    animation: fadeIn 0.4s; 
-}
-
-/* تصغير خط رقم الطاولة */
-.call-card h3 { 
-    margin: 0 0 6px 0; 
-    color: #e74c3c; 
-    font-size: 16px; 
-}
-
-/* تصغير خط تفاصيل الطلب والوقت */
-.call-card p { 
-    margin: 3px 0; 
-    font-size: 13px; 
-}
-
-/* تصغير حجم زر التلبية */
-.done-btn { 
-    background-color: #27ae60; 
-    color: white; 
-    border: none; 
-    padding: 6px 10px; 
-    border-radius: 5px; 
-    cursor: pointer; 
-    width: 100%; 
-    margin-top: 10px; 
-    font-size: 13px; 
-}
+        
+        /* شبكة البطاقات (تترتب بجانب بعضها أفقياً) */
+        #calls-container { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); 
+            gap: 15px; 
+            width: 100%;
+        }
+        
+        .call-card { 
+            background-color: #ecf0f1; 
+            color: #2c3e50; 
+            padding: 14px; 
+            border-radius: 10px; 
+            border-right: 6px solid #e74c3c; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4); 
+            animation: fadeIn 0.35s ease-out; 
+        }
+        
+        .call-card h3 { margin: 0 0 8px 0; color: #e74c3c; font-size: 17px; }
+        .call-card p { margin: 4px 0; font-size: 13px; }
+        
+        .done-btn { 
+            background-color: #27ae60; 
+            color: white; 
+            border: none; 
+            padding: 8px 10px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            width: 100%; 
+            margin-top: 12px; 
+            font-size: 13px; 
+            font-weight: bold;
+        }
+        .done-btn:hover { background-color: #219150; }
+        
+        /* شاشة البداية */
+        #start-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(18, 18, 18, 0.97); z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+        }
+        .overlay-logo { 
+            width: 110px; height: 110px; margin-bottom: 15px; 
+            border-radius: 15px; background: white; padding: 6px; object-fit: cover;
+        }
+        #start-btn {
+            background-color: #27ae60; color: white; border: none; padding: 15px 35px;
+            font-size: 18px; border-radius: 10px; cursor: pointer; font-weight: bold;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
+<div id="start-overlay">
+    <img src="logo.png" alt="PLUSNINET" class="overlay-logo" onerror="this.style.display='none'">
+    <h2>🔔 PLUSNINET</h2>
+    <p style="margin-bottom: 20px; color: #aaa;">اضغط بالأسفل لتفعيل التنبيهات الصوتية وإبقاء الشاشة نشطة</p>
+    <button id="start-btn" onclick="activateSystem()">🚀 بدء استقبال الطلبات</button>
+</div>
+
+<!-- الشريط العلوي -->
 <div class="header">
-    <div style="display: flex; align-items: center; gap: 10px;">
-    <img src="logo.png" alt="اللوجو" style="height: 40px; width: auto; border-radius: 6px; background: white; padding: 2px;">
-    <h2> PLUSNINET</h2>
+    <div class="header-brand">
+        <img src="logo.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
+        <h2 style="margin: 0; letter-spacing: 1px;">PLUSNINET</h2>
+    </div>
     <span id="conn-status" class="badge offline">جاري الاتصال...</span>
 </div>
 
+<!-- حاوية الطلبات بجانب بعضها -->
 <div id="calls-container"></div>
 
 <script>
@@ -73,17 +129,53 @@
 
     let ws;
     let pingInterval;
+    let audioCtx;
 
-   function playBeep() {
-    const audio = new Audio('bell.mp3');
-    audio.play().catch(e => console.log('اضغط في أي مكان بالشاشة لتفعيل الصوت'));
-}
+    async function activateSystem() {
+        document.getElementById('start-overlay').style.display = 'none';
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        playBeep();
+
+        try {
+            if ('wakeLock' in navigator) {
+                await navigator.wakeLock.request('screen');
+            }
+        } catch (err) {}
+    }
+
+    function playBeep() {
+        try {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc1 = audioCtx.createOscillator();
+            const gain1 = audioCtx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(660, audioCtx.currentTime);
+            gain1.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+            osc1.connect(gain1);
+            gain1.connect(audioCtx.destination);
+            osc1.start();
+            osc1.stop(audioCtx.currentTime + 0.5);
+
+            const osc2 = audioCtx.createOscillator();
+            const gain2 = audioCtx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(520, audioCtx.currentTime + 0.3);
+            gain2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.0);
+            osc2.connect(gain2);
+            gain2.connect(audioCtx.destination);
+            osc2.start(audioCtx.currentTime + 0.3);
+            osc2.stop(audioCtx.currentTime + 1.0);
+        } catch (e) {}
+    }
 
     function encodeString(str) {
         const enc = new TextEncoder().encode(str);
         const res = new Uint8Array(2 + enc.length);
-        res[0] = (enc.length >> 8) & 0xff;
-        res[1] = enc.length & 0xff;
+        res = (enc.length >> 8) & 0xff;
+        res = enc.length & 0xff;
         res.set(enc, 2);
         return res;
     }
@@ -114,12 +206,11 @@
 
         ws.onmessage = function(event) {
             const data = new Uint8Array(event.data);
-            const packetType = data[0] & 0xf0;
+            const packetType = data & 0xf0;
 
-            // CONNACK -> إرسال طلب الاشتراك (SUBSCRIBE)
-            if (packetType === 0x20 && data[3] === 0x00) {
+            if (packetType === 0x20 && data === 0x00) {
                 const topicBytes = encodeString(topic);
-                const payload = new Uint8Array([0x00, 0x01, ...topicBytes, 0x00]); // Packet ID 1, QoS 0
+                const payload = new Uint8Array([0x00, 0x01, ...topicBytes, 0x00]);
                 const remainingLen = encodeLength(payload.length);
                 ws.send(new Uint8Array([0x82, ...remainingLen, ...payload]));
 
@@ -132,7 +223,6 @@
                     }
                 }, 30000);
             }
-            // PUBLISH -> استقبال رسالة من طاولة
             else if (packetType === 0x30) {
                 let pos = 1;
                 let mult = 1;
